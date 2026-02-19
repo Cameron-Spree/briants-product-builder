@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Briants Product Builder</title>
+    <meta name="description" content="Product creation tool for Briants WooCommerce store">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/src/styles.css">
+</head>
+
+<body>
+
+    <div id="app">
+
+        <!-- ─── HEADER ─────────────────────────────────── -->
+        <header id="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📦</span>
+                    <h1>Briants <span class="accent">Product Builder</span></h1>
+                </div>
+            </div>
+            <div class="header-center">
+                <nav id="main-nav">
+                    <button class="nav-btn active" data-view="upload">
+                        <span class="nav-icon">📁</span> Upload
+                    </button>
+                    <button class="nav-btn" data-view="workspace">
+                        <span class="nav-icon">⚙️</span> Workspace
+                    </button>
+                    <button class="nav-btn" data-view="export">
+                        <span class="nav-icon">📤</span> Export
+                    </button>
+                </nav>
+            </div>
+            <div class="header-right">
+                <div id="stats-bar" class="stats-bar">
+                    <div class="stat">
+                        <span class="stat-value" id="stat-total">0</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value stat-pending" id="stat-pending">0</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value stat-complete" id="stat-complete">0</span>
+                        <span class="stat-label">Done</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ─── UPLOAD VIEW ────────────────────────────── -->
+        <div id="upload-view" class="view active">
+            <div class="view-content centered">
+                <div class="upload-card glass-panel">
+                    <div class="upload-zone" id="upload-zone">
+                        <div class="upload-icon">📄</div>
+                        <h2>Upload Product CSV</h2>
+                        <p class="upload-hint">Drag & drop your CSV file here, or click to browse</p>
+                        <p class="upload-format">Expected columns: <strong>SKU</strong>, <strong>Name</strong>,
+                            <strong>Price</strong>
+                        </p>
+                        <input type="file" id="csv-input" accept=".csv,.txt" hidden>
+                        <button class="btn btn-primary" id="browse-btn">Browse Files</button>
+                    </div>
+                    <div id="upload-progress" class="upload-progress hidden">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <p id="upload-status" class="upload-status">Processing...</p>
+                    </div>
+                </div>
+
+                <div id="upload-preview" class="upload-preview glass-panel hidden">
+                    <h3>Preview</h3>
+                    <div class="preview-table-wrap">
+                        <table id="preview-table" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Name</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="preview-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="preview-actions">
+                        <span id="preview-count" class="preview-count"></span>
+                        <button class="btn btn-success" id="confirm-upload-btn">Confirm & Import</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── WORKSPACE VIEW ─────────────────────────── -->
+        <div id="workspace-view" class="view">
+            <div class="workspace-layout">
+
+                <!-- Sidebar: Product Queue -->
+                <aside id="product-sidebar" class="glass-panel">
+                    <div class="sidebar-header">
+                        <h3>Products</h3>
+                        <div class="sidebar-filters">
+                            <select id="status-filter" class="input-select">
+                                <option value="all">All</option>
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="complete">Complete</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="sidebar-search">
+                        <input type="text" id="queue-search" class="input-text" placeholder="Search products...">
+                    </div>
+                    <div id="product-queue" class="product-queue"></div>
+                </aside>
+
+                <!-- Main: Product Editor -->
+                <main id="product-editor" class="product-editor">
+                    <div id="no-product-selected" class="empty-state">
+                        <div class="empty-icon">👈</div>
+                        <h3>Select a product</h3>
+                        <p>Choose a product from the sidebar to start editing</p>
+                    </div>
+
+                    <div id="editor-panel" class="editor-panel hidden">
+
+                        <!-- Product Header -->
+                        <div class="editor-header glass-panel">
+                            <div class="editor-header-info">
+                                <span class="sku-badge" id="editor-sku"></span>
+                                <h2 id="editor-name"></h2>
+                                <span class="price-tag" id="editor-price"></span>
+                            </div>
+                            <div class="editor-header-actions">
+                                <select id="editor-status" class="input-select status-select">
+                                    <option value="pending">⏳ Pending</option>
+                                    <option value="searching">🔍 Searching</option>
+                                    <option value="confirmed">✅ Confirmed</option>
+                                    <option value="complete">🎉 Complete</option>
+                                </select>
+                                <button class="btn btn-sm btn-save" id="save-product-btn">💾 Save</button>
+                            </div>
+                        </div>
+
+                        <!-- Section: Search & Confirm -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="search-section">
+                                <h3>🔍 Search & Confirm Product</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="search-section" class="section-body">
+                                <div class="search-actions">
+                                    <button class="btn btn-primary" id="google-search-btn">Search Google</button>
+                                    <span class="search-hint">Opens Google in a new tab — paste the correct URL
+                                        below</span>
+                                </div>
+                                <div class="input-group">
+                                    <label>Confirmed Product URL</label>
+                                    <input type="url" id="confirmed-url" class="input-text" placeholder="https://...">
+                                    <button class="btn btn-sm btn-secondary" id="scrape-btn">Scrape Product
+                                        Info</button>
+                                </div>
+                                <div id="scrape-status" class="scrape-status hidden"></div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Descriptions -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="desc-section">
+                                <h3>📝 Descriptions</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="desc-section" class="section-body">
+                                <div class="input-group">
+                                    <label>Short Description <span class="char-count"
+                                            id="short-desc-count">0</span></label>
+                                    <textarea id="short-desc" class="input-textarea" rows="3"
+                                        placeholder="A couple of sentences describing the product..."></textarea>
+                                </div>
+                                <div class="input-group">
+                                    <label>Long Description</label>
+                                    <textarea id="long-desc" class="input-textarea" rows="8"
+                                        placeholder="Detailed product description with all relevant information..."></textarea>
+                                </div>
+                                <div class="input-group">
+                                    <label>Features (HTML) <span class="format-hint">&lt;ul&gt;&lt;li&gt;
+                                            format</span></label>
+                                    <textarea id="features-html" class="input-textarea code" rows="8"
+                                        placeholder="<ul>&#10;  <li>Feature one</li>&#10;  <li>Feature two</li>&#10;</ul>"></textarea>
+                                    <div id="features-preview" class="features-preview"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Categories -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="cat-section">
+                                <h3>🏷️ Categories</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="cat-section" class="section-body">
+                                <div class="suggested-cats">
+                                    <h4>Suggested Categories</h4>
+                                    <div id="suggested-categories" class="category-chips"></div>
+                                </div>
+                                <div class="input-group">
+                                    <label>Selected Categories</label>
+                                    <div id="selected-categories" class="selected-categories"></div>
+                                </div>
+                                <div class="input-group">
+                                    <label>Browse All Categories</label>
+                                    <input type="text" id="cat-search" class="input-text"
+                                        placeholder="Search categories...">
+                                    <div id="all-categories" class="category-list"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Images -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="img-section">
+                                <h3>🖼️ Images</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="img-section" class="section-body">
+                                <div id="image-gallery" class="image-gallery"></div>
+                                <div class="input-group">
+                                    <label>Add Image URL</label>
+                                    <div class="url-input-row">
+                                        <input type="url" id="add-image-url" class="input-text"
+                                            placeholder="https://...image.jpg">
+                                        <button class="btn btn-sm btn-secondary" id="add-image-btn">Add</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Source Links -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="source-section">
+                                <h3>🔗 Source Links</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="source-section" class="section-body">
+                                <div id="source-links" class="source-links"></div>
+                                <div class="input-group">
+                                    <div class="url-input-row">
+                                        <input type="url" id="add-source-url" class="input-text"
+                                            placeholder="https://...">
+                                        <button class="btn btn-sm btn-secondary" id="add-source-btn">Add Link</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Notes -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="notes-section">
+                                <h3>📋 Notes</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="notes-section" class="section-body">
+                                <textarea id="product-notes" class="input-textarea" rows="3"
+                                    placeholder="Any notes about this product..."></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <!-- ─── EXPORT VIEW ────────────────────────────── -->
+        <div id="export-view" class="view">
+            <div class="view-content centered">
+                <div class="export-card glass-panel">
+                    <h2>📤 Export to WooCommerce</h2>
+                    <p class="export-hint">Generate a WooCommerce-compatible CSV file for all completed products.</p>
+
+                    <div class="export-stats">
+                        <div class="export-stat">
+                            <span class="export-stat-value" id="export-total">0</span>
+                            <span class="export-stat-label">Total Products</span>
+                        </div>
+                        <div class="export-stat">
+                            <span class="export-stat-value export-ready" id="export-complete">0</span>
+                            <span class="export-stat-label">Ready to Export</span>
+                        </div>
+                        <div class="export-stat">
+                            <span class="export-stat-value export-remaining" id="export-remaining">0</span>
+                            <span class="export-stat-label">Still Pending</span>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Website Domain</label>
+                        <input type="text" id="export-domain" class="input-text" placeholder="briantsofrisborough.co.uk"
+                            value="briantsofrisborough.co.uk">
+                        <span class="input-hint">Used for image URLs in the CSV</span>
+                    </div>
+
+                    <div class="export-actions">
+                        <button class="btn btn-primary btn-lg" id="export-csv-btn">
+                            📥 Download WooCommerce CSV
+                        </button>
+                        <button class="btn btn-secondary" id="export-all-btn">
+                            Export All (including incomplete)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── TOAST CONTAINER ────────────────────────── -->
+        <div id="toast-container" class="toast-container"></div>
+
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>

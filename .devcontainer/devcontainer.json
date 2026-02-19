@@ -1,0 +1,16 @@
+{
+    "name": "Briants Product Builder",
+    "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+    "postCreateCommand": "npm install",
+    "forwardPorts": [
+        3000,
+        3001
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "dbaeumer.vscode-eslint"
+            ]
+        }
+    }
+}
