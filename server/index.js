@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { scrapeProductPage } from './scraper.js';
 import { suggestCategories, getAllCategories } from './categories.js';
+import { generateProductContent } from './gemini.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +31,7 @@ const upload = multer({ dest: path.join(DATA_DIR, 'uploads') });
 
 // ── State ──────────────────────────────────────────────
 let products = loadProducts();
+let geminiApiKey = '';  // Set via /api/settings
 
 function loadProducts() {
     try {
@@ -147,6 +149,45 @@ app.post('/api/suggest-categories', (req, res) => {
     const { name, description } = req.body;
     const suggestions = suggestCategories(name || '', description || '');
     res.json(suggestions);
+});
+
+// Set/get API settings
+app.post('/api/settings', (req, res) => {
+    if (req.body.geminiApiKey !== undefined) {
+        geminiApiKey = req.body.geminiApiKey;
+    }
+    res.json({ geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '' });
+});
+
+app.get('/api/settings', (req, res) => {
+    res.json({ geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '' });
+});
+
+// Generate content with Gemini AI
+app.post('/api/generate', async (req, res) => {
+    const { sku, fields } = req.body;
+    if (!geminiApiKey) {
+        return res.status(400).json({ error: 'No Gemini API key set. Go to Settings to add it.' });
+    }
+    if (!sku) return res.status(400).json({ error: 'SKU is required' });
+
+    const product = products.find(p => p.sku === sku);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const fieldsToGenerate = fields || ['shortDescription', 'description', 'features', 'categories'];
+
+    try {
+        const result = await generateProductContent(
+            geminiApiKey,
+            product,
+            fieldsToGenerate,
+            getAllCategories()
+        );
+        res.json(result);
+    } catch (e) {
+        console.error('Gemini error:', e);
+        res.status(500).json({ error: 'AI generation failed: ' + e.message });
+    }
 });
 
 // Download an image

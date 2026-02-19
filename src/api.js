@@ -87,3 +87,24 @@ export async function getStats() {
     const res = await request('/stats');
     return res.json();
 }
+
+export async function generateWithAI(sku, fields) {
+    const res = await request('/generate', {
+        method: 'POST',
+        body: JSON.stringify({ sku, fields })
+    });
+    return res.json();
+}
+
+export async function saveSettings(settings) {
+    const res = await request('/settings', {
+        method: 'POST',
+        body: JSON.stringify(settings)
+    });
+    return res.json();
+}
+
+export async function getSettings() {
+    const res = await request('/settings');
+    return res.json();
+}

@@ -4,7 +4,9 @@
    ════════════════════════════════════════════════ */
 
 /* ─── Reset & Base ──────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -61,7 +63,8 @@
   --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
   background: var(--bg-deep);
@@ -101,9 +104,20 @@ html, body {
   z-index: 100;
 }
 
-.header-left { display: flex; align-items: center; }
-.header-center { display: flex; align-items: center; }
-.header-right { display: flex; align-items: center; }
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
 
 .logo {
   display: flex;
@@ -165,7 +179,9 @@ html, body {
   box-shadow: var(--shadow-sm);
 }
 
-.nav-icon { font-size: 1rem; }
+.nav-icon {
+  font-size: 1rem;
+}
 
 /* Stats Bar */
 .stats-bar {
@@ -186,8 +202,13 @@ html, body {
   color: var(--text-primary);
 }
 
-.stat-pending { color: var(--accent-orange); }
-.stat-complete { color: var(--accent-green); }
+.stat-pending {
+  color: var(--accent-orange);
+}
+
+.stat-complete {
+  color: var(--accent-green);
+}
 
 .stat-label {
   font-size: 0.7rem;
@@ -259,8 +280,15 @@ html, body {
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
 }
 
 .upload-zone h2 {
@@ -464,14 +492,33 @@ html, body {
   flex-shrink: 0;
 }
 
-.status-dot.pending { background: var(--accent-orange); }
-.status-dot.searching { background: var(--accent-blue); animation: pulse 2s infinite; }
-.status-dot.confirmed { background: var(--accent-purple); }
-.status-dot.complete { background: var(--accent-green); }
+.status-dot.pending {
+  background: var(--accent-orange);
+}
+
+.status-dot.searching {
+  background: var(--accent-blue);
+  animation: pulse 2s infinite;
+}
+
+.status-dot.confirmed {
+  background: var(--accent-purple);
+}
+
+.status-dot.complete {
+  background: var(--accent-green);
+}
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* ─── Product Editor ────────────────────────── */
@@ -661,7 +708,8 @@ html, body {
   color: var(--text-muted);
 }
 
-.char-count, .format-hint {
+.char-count,
+.format-hint {
   font-weight: 400;
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -678,10 +726,21 @@ html, body {
 }
 
 /* Status Select Colors */
-.status-select option[value="pending"] { color: var(--accent-orange); }
-.status-select option[value="searching"] { color: var(--accent-blue); }
-.status-select option[value="confirmed"] { color: var(--accent-purple); }
-.status-select option[value="complete"] { color: var(--accent-green); }
+.status-select option[value="pending"] {
+  color: var(--accent-orange);
+}
+
+.status-select option[value="searching"] {
+  color: var(--accent-blue);
+}
+
+.status-select option[value="confirmed"] {
+  color: var(--accent-purple);
+}
+
+.status-select option[value="complete"] {
+  color: var(--accent-green);
+}
 
 /* ─── Buttons ───────────────────────────────── */
 .btn {
@@ -1143,17 +1202,33 @@ html, body {
 }
 
 @keyframes slideIn {
-  from { transform: translateX(100px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideOut {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100px); opacity: 0; }
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100px);
+    opacity: 0;
+  }
 }
 
 /* ─── Utility ───────────────────────────────── */
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}
 
 /* ─── Scrollbar ─────────────────────────────── */
 ::-webkit-scrollbar {
@@ -1173,11 +1248,102 @@ html, body {
   background: var(--text-muted);
 }
 
+/* ─── Modal ─────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-panel {
+  width: 100%;
+  max-width: 460px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.settings-status {
+  padding: 8px 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.settings-status.saved {
+  color: var(--accent-green);
+}
+
+/* ─── AI & Icon Buttons ────────────────────── */
+.btn-ai {
+  background: linear-gradient(135deg, #a855f7, #6366f1);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-ai:hover {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
+}
+
+.btn-ai:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-icon {
+  background: transparent;
+  border: 1px solid var(--border-medium);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font-size: 1.1rem;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /* ─── Responsive ────────────────────────────── */
 @media (max-width: 900px) {
   .workspace-layout {
     flex-direction: column;
   }
+
   #product-sidebar {
     width: 100%;
     min-width: 100%;
@@ -1185,5 +1351,8 @@ html, body {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
-  .stats-bar { display: none; }
+
+  .stats-bar {
+    display: none;
+  }
 }

@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 
 /**
  * Scrape a product page for info: title, description, features, specs, images
+ * Enhanced with WooCommerce-specific selectors and OG meta fallbacks
  */
 export async function scrapeProductPage(url) {
     const fetch = (await import('node-fetch')).default;
@@ -22,30 +23,37 @@ export async function scrapeProductPage(url) {
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Remove scripts, styles, nav, footer
-    $('script, style, nav, footer, header, .cookie-banner, .popup, #cookie-consent').remove();
+    // Remove scripts, styles, nav, footer, cookie banners
+    $('script, style, noscript, nav, footer, header, .cookie-banner, .popup, #cookie-consent, .site-header, .site-footer, .cart-sidebar').remove();
 
     const result = {
         title: extractTitle($),
         description: extractDescription($),
+        shortDescription: extractShortDescription($),
         features: extractFeatures($),
         specs: extractSpecs($),
         images: extractImages($, url),
-        sourceUrl: url
+        sourceUrl: url,
+        metaDescription: $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '',
+        brand: extractBrand($),
+        sku: extractSku($),
+        price: extractPrice($),
+        rawText: extractRawText($)
     };
 
     return result;
 }
 
 function extractTitle($) {
-    // Try structured data first
     const selectors = [
-        '[itemprop="name"]',
-        'h1.product-title',
         'h1.product_title',
-        'h1.product-name',
+        'h1.product-title',
+        '.product_title',
+        '[itemprop="name"]',
+        'h1.entry-title',
         '.product-info h1',
         '.product-detail h1',
+        '.product-name h1',
         'h1'
     ];
 
@@ -53,63 +61,117 @@ function extractTitle($) {
         const text = $(sel).first().text().trim();
         if (text && text.length > 2 && text.length < 300) return text;
     }
+    return $('title').text().split('|')[0].split('-')[0].trim() || '';
+}
+
+function extractShortDescription($) {
+    const selectors = [
+        '.woocommerce-product-details__short-description',
+        '.product-short-description',
+        '.short-description',
+        '[itemprop="description"]:not(.woocommerce-Tabs-panel)',
+        '.product_meta + div',
+        '.summary .description'
+    ];
+
+    for (const sel of selectors) {
+        const el = $(sel).first();
+        if (el.length) {
+            const text = el.text().trim();
+            if (text.length > 10) return text;
+        }
+    }
+
+    // Fallback: OG description
+    const ogDesc = $('meta[property="og:description"]').attr('content') || '';
+    if (ogDesc.length > 10) return ogDesc;
+
     return '';
 }
 
 function extractDescription($) {
-    const selectors = [
-        '[itemprop="description"]',
+    // WooCommerce-specific selectors first
+    const wooSelectors = [
+        '.woocommerce-Tabs-panel--description',
+        '#tab-description',
+        '.woocommerce-Tabs-panel',
         '.product-description',
         '.product_description',
-        '#product-description',
-        '.woocommerce-product-details__short-description',
-        '.product-detail-description',
+        '#product-description'
+    ];
+
+    for (const sel of wooSelectors) {
+        const el = $(sel).first();
+        if (el.length) {
+            // Get all paragraphs and text content
+            const paragraphs = [];
+            el.find('p, h2, h3, h4').each((_, child) => {
+                const text = $(child).text().trim();
+                if (text.length > 5) {
+                    paragraphs.push(text);
+                }
+            });
+            if (paragraphs.length > 0) return paragraphs.join('\n\n');
+
+            // Fall back to full text content
+            const fullText = el.text().trim();
+            if (fullText.length > 20) return fullText;
+        }
+    }
+
+    // Generic selectors
+    const genericSelectors = [
+        '[itemprop="description"]',
         '.description',
         '.product-info .description',
+        '.product-detail-description',
         '.tab-pane.active',
         '.product-detail p'
     ];
 
-    const paragraphs = [];
-
-    for (const sel of selectors) {
+    for (const sel of genericSelectors) {
+        const paragraphs = [];
         $(sel).each((_, el) => {
-            // Get all text paragraphs
-            const $el = $(el);
-            $el.find('p, div').each((_, child) => {
+            $(el).find('p').each((_, child) => {
                 const text = $(child).text().trim();
                 if (text.length > 20 && text.length < 2000) {
                     paragraphs.push(text);
                 }
             });
-            // Also get direct text
-            const directText = $el.text().trim();
+            const directText = $(el).text().trim();
             if (directText.length > 20 && directText.length < 2000 && !paragraphs.includes(directText)) {
                 paragraphs.push(directText);
             }
         });
-        if (paragraphs.length > 0) break;
+        if (paragraphs.length > 0) {
+            return [...new Set(paragraphs)].slice(0, 5).join('\n\n');
+        }
     }
 
-    // Deduplicate and limit
-    const unique = [...new Set(paragraphs)];
-    return unique.slice(0, 5).join('\n\n');
+    // Last resort: OG description
+    return $('meta[property="og:description"]').attr('content') || '';
 }
 
 function extractFeatures($) {
     const features = [];
+
+    // Look for feature lists in description tabs and product content
     const selectors = [
+        '.woocommerce-Tabs-panel--description ul li',
+        '.woocommerce-Tabs-panel--description li',
+        '#tab-description ul li',
         '.product-features li',
         '.features li',
         '.feature-list li',
-        '.product-specs li',
         '.key-features li',
         '.product-highlights li',
         '.bullets li',
+        '.summary ul li',
         '.product-info ul li',
         '.product-detail ul li',
         '[class*="feature"] li',
-        '[class*="specification"] li'
+        '[class*="specification"] li',
+        '.woocommerce-product-details__short-description ul li'
     ];
 
     for (const sel of selectors) {
@@ -122,7 +184,29 @@ function extractFeatures($) {
         if (features.length > 0) break;
     }
 
-    // If no feature lists found, try to extract from description tables
+    // If no feature lists found, try specs tables
+    if (features.length === 0) {
+        // WooCommerce additional info table
+        const additionalInfoSelectors = [
+            '.woocommerce-product-attributes',
+            '#tab-additional_information table',
+            '.shop_attributes',
+            'table.product-attributes'
+        ];
+
+        for (const sel of additionalInfoSelectors) {
+            $(sel).find('tr').each((_, row) => {
+                const label = $(row).find('th').text().trim();
+                const value = $(row).find('td').text().trim();
+                if (label && value) {
+                    features.push(`${label}: ${value}`);
+                }
+            });
+            if (features.length > 0) break;
+        }
+    }
+
+    // Generic table fallback
     if (features.length === 0) {
         $('table').each((_, table) => {
             $(table).find('tr').each((_, row) => {
@@ -143,7 +227,12 @@ function extractFeatures($) {
 
 function extractSpecs($) {
     const specs = {};
+
+    // WooCommerce product attributes
     const selectors = [
+        '.woocommerce-product-attributes',
+        '.shop_attributes',
+        '#tab-additional_information table',
         '.product-specifications',
         '.specifications',
         '.product-specs',
@@ -154,12 +243,9 @@ function extractSpecs($) {
 
     for (const sel of selectors) {
         $(sel).find('tr').each((_, row) => {
-            const cells = $(row).find('td, th');
-            if (cells.length >= 2) {
-                const key = $(cells[0]).text().trim();
-                const val = $(cells[1]).text().trim();
-                if (key && val) specs[key] = val;
-            }
+            const key = $(row).find('th').text().trim();
+            const val = $(row).find('td').text().trim();
+            if (key && val) specs[key] = val;
         });
 
         // Also try dl > dt/dd pairs
@@ -179,11 +265,17 @@ function extractSpecs($) {
 
 function extractImages($, baseUrl) {
     const images = new Set();
+
+    // WooCommerce gallery
     const selectors = [
-        '.product-image img',
-        '.product-gallery img',
+        '.woocommerce-product-gallery__image img',
         '.woocommerce-product-gallery img',
+        '.product-gallery img',
+        '.product-images img',
+        '.product-image img',
+        'figure.woocommerce-product-gallery__wrapper img',
         '[itemprop="image"]',
+        '.wp-post-image',
         '.product-photo img',
         '.product-media img',
         '.gallery img',
@@ -192,26 +284,123 @@ function extractImages($, baseUrl) {
 
     for (const sel of selectors) {
         $(sel).each((_, img) => {
-            let src = $(img).attr('data-src') || $(img).attr('data-large') ||
-                $(img).attr('data-zoom-image') || $(img).attr('src') || '';
+            // Try multiple src attributes (WooCommerce often uses data attributes)
+            const srcs = [
+                $(img).attr('data-large_image'),
+                $(img).attr('data-src'),
+                $(img).attr('data-zoom-image'),
+                $(img).attr('data-full'),
+                $(img).attr('src')
+            ].filter(Boolean);
 
-            // Resolve relative URLs
-            if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-                try {
-                    src = new URL(src, baseUrl).href;
-                } catch (e) {
-                    return;
+            for (let src of srcs) {
+                // Skip tiny thumbnails (WooCommerce generates many sizes)
+                if (src.includes('-150x150') || src.includes('-100x100') || src.includes('-50x50')) continue;
+
+                // Resolve relative URLs
+                if (!src.startsWith('http') && !src.startsWith('data:')) {
+                    try {
+                        src = new URL(src, baseUrl).href;
+                    } catch (e) {
+                        continue;
+                    }
                 }
-            }
 
-            // Filter out tiny icons, placeholders
-            if (src && src.startsWith('http') && !src.includes('placeholder') &&
-                !src.includes('spinner') && !src.includes('logo') &&
-                !src.includes('1x1') && !src.includes('pixel')) {
-                images.add(src);
+                // Filter out icons, placeholders, logos
+                if (src.startsWith('http') && !src.includes('placeholder') &&
+                    !src.includes('spinner') && !src.includes('logo') &&
+                    !src.includes('1x1') && !src.includes('pixel') &&
+                    !src.includes('woocommerce-placeholder')) {
+                    images.add(src);
+                    break; // Only take the highest quality src per img element
+                }
             }
         });
     }
 
+    // Also check og:image
+    const ogImage = $('meta[property="og:image"]').attr('content');
+    if (ogImage && ogImage.startsWith('http')) {
+        images.add(ogImage);
+    }
+
     return [...images].slice(0, 10);
+}
+
+function extractBrand($) {
+    // WooCommerce brand taxonomies
+    const selectors = [
+        '[rel="tag"]',
+        '.product_meta .brand a',
+        '.product_meta .posted_in a',
+        '[itemprop="brand"]',
+        '.brand'
+    ];
+
+    for (const sel of selectors) {
+        const text = $(sel).first().text().trim();
+        if (text && text.length > 1 && text.length < 100) return text;
+    }
+    return '';
+}
+
+function extractSku($) {
+    const selectors = [
+        '.sku',
+        '[itemprop="sku"]',
+        '.product_meta .sku'
+    ];
+
+    for (const sel of selectors) {
+        const text = $(sel).first().text().trim();
+        if (text && text.length > 1) return text;
+    }
+    return '';
+}
+
+function extractPrice($) {
+    const selectors = [
+        '.price .woocommerce-Price-amount',
+        '.price ins .woocommerce-Price-amount',
+        '[itemprop="price"]',
+        '.product-price',
+        '.price'
+    ];
+
+    for (const sel of selectors) {
+        const text = $(sel).first().text().trim().replace(/[£$€,]/g, '');
+        const num = parseFloat(text);
+        if (!isNaN(num)) return num.toString();
+    }
+    return '';
+}
+
+/**
+ * Extract ALL readable text from the page for AI processing
+ */
+function extractRawText($) {
+    // Get text from product-relevant areas only
+    const areas = [
+        '.woocommerce-Tabs-panel--description',
+        '#tab-description',
+        '.woocommerce-product-details__short-description',
+        '.summary',
+        '.product-content',
+        '.product-description',
+        '.product, .product-detail, .product-info, main, article'
+    ];
+
+    const texts = [];
+    for (const sel of areas) {
+        const text = $(sel).text().trim()
+            .replace(/\s+/g, ' ')
+            .replace(/\n\s*\n/g, '\n');
+        if (text.length > 20) {
+            texts.push(text);
+        }
+    }
+
+    // Deduplicate and limit to ~3000 chars for AI context
+    const combined = [...new Set(texts)].join('\n\n');
+    return combined.substring(0, 3000);
 }

@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupWorkspaceView();
     setupExportView();
     setupSectionToggles();
+    setupSettings();
 
     // Load existing data
     try {
@@ -246,6 +247,9 @@ function setupWorkspaceView() {
     // Save
     document.getElementById('save-product-btn').addEventListener('click', saveCurrentProduct);
 
+    // AI Generate
+    document.getElementById('ai-generate-btn').addEventListener('click', aiGenerateContent);
+
     // Status change
     document.getElementById('editor-status').addEventListener('change', (e) => {
         const p = getProduct(state.currentSku);
@@ -404,9 +408,15 @@ async function scrapeProduct() {
         p.status = 'confirmed';
 
         // Auto-fill descriptions
-        if (data.description && !p.shortDescription) {
-            const sentences = data.description.split(/[.!?]+/).filter(s => s.trim().length > 10);
-            p.shortDescription = sentences.slice(0, 2).join('. ').trim() + '.';
+        if (!p.shortDescription) {
+            if (data.shortDescription) {
+                p.shortDescription = data.shortDescription;
+            } else if (data.metaDescription) {
+                p.shortDescription = data.metaDescription;
+            } else if (data.description) {
+                const sentences = data.description.split(/[.!?]+/).filter(s => s.trim().length > 10);
+                p.shortDescription = sentences.slice(0, 2).join('. ').trim() + '.';
+            }
         }
 
         if (data.description && !p.longDescription) {
@@ -448,6 +458,66 @@ async function scrapeProduct() {
         statusEl.className = 'scrape-status error';
         statusEl.textContent = '❌ Failed: ' + e.message;
         toast('Scrape failed: ' + e.message, 'error');
+    }
+}
+
+async function aiGenerateContent() {
+    const p = getProduct(state.currentSku);
+    if (!p) return;
+
+    // Determine which fields need generating
+    const fields = [];
+    if (!p.shortDescription) fields.push('shortDescription');
+    if (!p.longDescription) fields.push('description');
+    if (!p.featuresHtml) fields.push('features');
+    if (!p.categories || p.categories.length === 0) fields.push('categories');
+
+    if (fields.length === 0) {
+        toast('All fields already have content!', 'info');
+        return;
+    }
+
+    const btn = document.getElementById('ai-generate-btn');
+    const original = btn.textContent;
+    btn.textContent = '🤖 Generating...';
+    btn.disabled = true;
+
+    try {
+        // Save current form state first
+        p.shortDescription = document.getElementById('short-desc').value;
+        p.longDescription = document.getElementById('long-desc').value;
+        p.featuresHtml = document.getElementById('features-html').value;
+        p.notes = document.getElementById('product-notes').value;
+        await API.updateProduct(p.sku, p);
+
+        const result = await API.generateWithAI(p.sku, fields);
+
+        // Apply results to product
+        if (result.shortDescription && !p.shortDescription) {
+            p.shortDescription = result.shortDescription;
+        }
+        if (result.description && !p.longDescription) {
+            p.longDescription = result.description;
+        }
+        if (result.features && result.features.length > 0 && !p.featuresHtml) {
+            const lis = result.features.map(f => `  <li>${esc(f)}</li>`).join('\n');
+            p.featuresHtml = `<ul>\n${lis}\n</ul>`;
+        }
+        if (result.categories && result.categories.length > 0 && p.categories.length === 0) {
+            p.categories = result.categories;
+        }
+
+        await API.updateProduct(p.sku, p);
+
+        // Refresh editor
+        selectProduct(p.sku);
+        toast(`AI generated ${fields.length} field(s) successfully!`, 'success');
+
+    } catch (e) {
+        toast('AI generation failed: ' + e.message, 'error');
+    } finally {
+        btn.textContent = original;
+        btn.disabled = false;
     }
 }
 
@@ -764,4 +834,56 @@ function toast(message, type = 'info') {
         el.classList.add('leaving');
         setTimeout(() => el.remove(), 300);
     }, 4000);
+}
+
+// ─── Settings Modal ───────────────────────────
+function setupSettings() {
+    const modal = document.getElementById('settings-modal');
+    const keyInput = document.getElementById('gemini-api-key');
+    const saveBtn = document.getElementById('save-settings-btn');
+    const statusEl = document.getElementById('settings-status');
+
+    document.getElementById('settings-btn').addEventListener('click', () => {
+        modal.classList.remove('hidden');
+    });
+
+    document.getElementById('close-settings').addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.add('hidden');
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const key = keyInput.value.trim();
+        if (!key) {
+            statusEl.textContent = 'Please enter a key';
+            statusEl.className = 'settings-status';
+            return;
+        }
+
+        try {
+            const result = await API.saveSettings({ geminiApiKey: key });
+            statusEl.textContent = `Key saved: ${result.geminiApiKey}`;
+            statusEl.className = 'settings-status saved';
+            keyInput.value = '';
+            toast('Gemini API key saved!', 'success');
+
+            // Auto-close after a moment
+            setTimeout(() => modal.classList.add('hidden'), 1500);
+        } catch (e) {
+            statusEl.textContent = 'Failed to save: ' + e.message;
+            statusEl.className = 'settings-status';
+        }
+    });
+
+    // Load current status
+    API.getSettings().then(s => {
+        if (s.geminiApiKey) {
+            statusEl.textContent = `Key configured: ${s.geminiApiKey}`;
+            statusEl.className = 'settings-status saved';
+        }
+    }).catch(() => { });
 }
