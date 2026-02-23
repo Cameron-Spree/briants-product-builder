@@ -747,35 +747,42 @@ function setupSectionToggles() {
 // EXPORT VIEW
 // ════════════════════════════════════════════════
 function setupExportView() {
-    document.getElementById('export-csv-btn').addEventListener('click', () => {
+    document.getElementById('export-csv-btn').addEventListener('click', async () => {
         const domain = document.getElementById('export-domain').value.trim() || 'briantsofrisborough.co.uk';
-        window.open(API.getExportUrl(domain), '_blank');
-        toast('WooCommerce CSV downloading...', 'success');
+        try {
+            const res = await fetch(API.getExportUrl(domain));
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `briants-products-${Date.now()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast('WooCommerce CSV downloaded!', 'success');
+        } catch (e) {
+            toast('Export failed: ' + e.message, 'error');
+        }
     });
 
     document.getElementById('export-all-btn').addEventListener('click', async () => {
-        // Mark all as complete temporarily for export
         const domain = document.getElementById('export-domain').value.trim() || 'briantsofrisborough.co.uk';
-        const originalStatuses = {};
-        state.products.forEach(p => {
-            originalStatuses[p.sku] = p.status;
-            p.status = 'complete';
-        });
-
-        // Save all as complete
-        for (const p of state.products) {
-            await API.updateProduct(p.sku, p);
+        try {
+            const res = await fetch(`${API.getExportUrl(domain)}&all=true`);
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `briants-products-all-${Date.now()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast('Full export downloaded (all products included)', 'info');
+        } catch (e) {
+            toast('Export failed: ' + e.message, 'error');
         }
-
-        window.open(API.getExportUrl(domain), '_blank');
-
-        // Restore original statuses
-        for (const p of state.products) {
-            p.status = originalStatuses[p.sku];
-            await API.updateProduct(p.sku, p);
-        }
-
-        toast('Full export downloaded (all products included)', 'info');
     });
 
     document.getElementById('export-images-btn').addEventListener('click', () => {

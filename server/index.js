@@ -278,9 +278,11 @@ app.get('/api/export-images', (req, res) => {
 // Export WooCommerce CSV
 app.get('/api/export-csv', (req, res) => {
     const domain = req.query.domain || 'briantsofrisborough.co.uk';
-    const completedProducts = products.filter(p => p.status === 'complete');
+    const all = req.query.all === 'true';
+    const productsToExport = all ? products : products.filter(p => p.status === 'complete');
 
-    const rows = completedProducts.map(p => {
+
+    const rows = productsToExport.map(p => {
         const approvedImages = (p.images || [])
             .filter(img => img.approved && img.filename)
             .map(img => `https://${domain}/wp-content/uploads/${img.filename}`)
