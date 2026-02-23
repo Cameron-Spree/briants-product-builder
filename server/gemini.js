@@ -3,7 +3,7 @@
  * Uses Google's Generative AI API (Gemini 2.0 Flash)
  */
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 /**
  * Generate product content using Gemini AI

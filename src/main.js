@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupExportView();
     setupSectionToggles();
     setupSettings();
+    setupTheme();
 
     // Load existing data
     try {
@@ -249,6 +250,9 @@ function setupWorkspaceView() {
 
     // AI Generate
     document.getElementById('ai-generate-btn').addEventListener('click', aiGenerateContent);
+
+    // Clear Workspace
+    document.getElementById('clear-all-btn').addEventListener('click', clearWorkspace);
 
     // Status change
     document.getElementById('editor-status').addEventListener('change', (e) => {
@@ -543,6 +547,29 @@ async function saveCurrentProduct() {
     }
 }
 
+async function clearWorkspace() {
+    if (!confirm('Are you sure you want to clear the workspace? All uploaded data and progress will be lost. This cannot be undone.')) {
+        return;
+    }
+
+    try {
+        await API.resetAll();
+        state.products = [];
+        state.currentSku = null;
+
+        hide('editor-panel');
+        show('no-product-selected');
+
+        renderQueue();
+        updateStats();
+        toast('Workspace cleared successfully', 'success');
+
+        showView('upload');
+    } catch (e) {
+        toast('Failed to clear workspace: ' + e.message, 'error');
+    }
+}
+
 // ─── Categories ────────────────────────────────
 function renderSuggestedCategories(product) {
     const container = document.getElementById('suggested-categories');
@@ -750,6 +777,20 @@ function setupExportView() {
 
         toast('Full export downloaded (all products included)', 'info');
     });
+
+    document.getElementById('export-images-btn').addEventListener('click', () => {
+        const approvedCount = state.products.reduce((count, p) => {
+            return count + (p.images ? p.images.filter(img => img.approved && img.filename).length : 0);
+        }, 0);
+
+        if (approvedCount === 0) {
+            toast('No approved images to download. Approve some images first.', 'error');
+            return;
+        }
+
+        window.open('/api/export-images', '_blank');
+        toast('Image ZIP downloading...', 'success');
+    });
 }
 
 function updateExportStats() {
@@ -886,4 +927,37 @@ function setupSettings() {
             statusEl.className = 'settings-status saved';
         }
     }).catch(() => { });
+}
+
+// ─── Theme Toggle ─────────────────────────────
+function setupTheme() {
+    const btn = document.getElementById('theme-btn');
+    if (!btn) return;
+
+    // Check local storage or system preference
+    const savedTheme = localStorage.getItem('theme');
+    const systemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+
+    const isLight = savedTheme === 'light' || (!savedTheme && systemLight);
+
+    if (isLight) {
+        document.body.setAttribute('data-theme', 'light');
+        btn.textContent = '🌙';
+    }
+
+    btn.addEventListener('click', () => {
+        const isCurrentlyLight = document.body.getAttribute('data-theme') === 'light';
+
+        if (isCurrentlyLight) {
+            document.body.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'dark');
+            btn.textContent = '☀️';
+            toast('Dark Mode enabled', 'info');
+        } else {
+            document.body.setAttribute('data-theme', 'light');
+            localStorage.setItem('theme', 'light');
+            btn.textContent = '🌙';
+            toast('Light Mode enabled', 'info');
+        }
+    });
 }

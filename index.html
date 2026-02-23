@@ -53,6 +53,7 @@
                         <span class="stat-label">Done</span>
                     </div>
                 </div>
+                <button class="btn btn-sm btn-icon" id="theme-btn" title="Toggle Light/Dark Mode">☀️</button>
                 <button class="btn btn-sm btn-icon" id="settings-btn" title="Settings">⚙️</button>
             </div>
         </header>
@@ -130,6 +131,9 @@
                         <div class="empty-icon">👈</div>
                         <h3>Select a product</h3>
                         <p>Choose a product from the sidebar to start editing</p>
+                        <div style="margin-top: 2rem;">
+                            <button class="btn btn-danger" id="clear-all-btn">🗑️ Clear Workspace (Start Fresh)</button>
+                        </div>
                     </div>
 
                     <div id="editor-panel" class="editor-panel hidden">
@@ -317,6 +321,17 @@
                         </button>
                         <button class="btn btn-secondary" id="export-all-btn">
                             Export All (including incomplete)
+                        </button>
+                    </div>
+
+                    <div class="glass-panel" style="margin-top: 24px; padding: 24px; text-align: center;">
+                        <h3 style="margin-bottom: 12px;">Image Export</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                            Download a ZIP file containing all your approved product images. These can be uploaded
+                            directly to WordPress media library.
+                        </p>
+                        <button class="btn btn-success btn-lg" id="export-images-btn">
+                            📦 Download Images (ZIP)
                         </button>
                     </div>
                 </div>

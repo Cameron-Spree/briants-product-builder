@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { scrapeProductPage } from './scraper.js';
 import { suggestCategories, getAllCategories } from './categories.js';
 import { generateProductContent } from './gemini.js';
+import AdmZip from 'adm-zip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -233,6 +234,44 @@ app.post('/api/download-image', async (req, res) => {
     } catch (e) {
         console.error('Image download error:', e);
         res.status(500).json({ error: 'Failed to download image: ' + e.message });
+    }
+});
+
+// Export ZIP of all approved images
+app.get('/api/export-images', (req, res) => {
+    try {
+        const zip = new AdmZip();
+        let addedCount = 0;
+
+        // Add all approved images from all products
+        products.forEach(p => {
+            if (p.images && p.images.length > 0) {
+                p.images.filter(img => img.approved && img.filename).forEach(img => {
+                    const skuDir = path.join(IMAGES_DIR, p.sku);
+                    const imagePath = path.join(skuDir, img.filename);
+                    if (fs.existsSync(imagePath)) {
+                        zip.addLocalFile(imagePath);
+                        addedCount++;
+                    }
+                });
+            }
+        });
+
+        if (addedCount === 0) {
+            return res.status(404).send('No approved images found to export.');
+        }
+
+        const zipName = `briants-images-${Date.now()}.zip`;
+        const zipBuffer = zip.toBuffer();
+
+        res.set('Content-Type', 'application/zip');
+        res.set('Content-Disposition', `attachment; filename="${zipName}"`);
+        res.set('Content-Length', zipBuffer.length);
+        res.send(zipBuffer);
+
+    } catch (e) {
+        console.error('ZIP generation error:', e);
+        res.status(500).send('Failed to generate ZIP: ' + e.message);
     }
 });
 
