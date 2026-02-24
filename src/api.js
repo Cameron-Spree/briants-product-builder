@@ -39,7 +39,7 @@ export async function uploadCSV(file) {
 
 export async function updateProduct(sku, data) {
     const res = await request(`/products/${encodeURIComponent(sku)}`, {
-        method: 'PUT',
+        method: 'POST',
         body: JSON.stringify(data)
     });
     return res.json();

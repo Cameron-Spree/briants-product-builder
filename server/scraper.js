@@ -50,8 +50,8 @@ export async function scrapeProductPage(url) {
 export async function autoFindProductUrl(query) {
     const fetch = (await import('node-fetch')).default;
 
-    // Fall back to a Google Search query
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    // Use Yahoo Search as it is much more lenient with standard scraper user-agents
+    const searchUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
 
     const response = await fetch(searchUrl, {
         headers: {
@@ -72,15 +72,28 @@ export async function autoFindProductUrl(query) {
     // Find the first likely product URL from the results
     let foundUrl = null;
 
-    $('#main a, #search a, .g a').each((_, el) => {
-        const href = $(el).attr('href');
+    $('h3.title a, .compTitle a, #web a').each((_, el) => {
+        let href = $(el).attr('href');
+
+        // Note: Yahoo sometimes wraps links like https://r.search.yahoo.com/.../RU=https://actual-link.com/...
+        if (href && href.includes('RU=')) {
+            try {
+                const ruMatch = href.match(/RU=([^/]+)/);
+                if (ruMatch && ruMatch[1]) {
+                    href = decodeURIComponent(ruMatch[1]);
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
 
         if (href && href.startsWith('http')) {
             // Exclude common non-ecommerce sites that rank high
             const exclusions = [
-                'google', 'amazon', 'ebay', 'wikipedia.org',
+                'yahoo.com', 'google.com', 'amazon', 'ebay', 'wikipedia.org',
                 'youtube.com', 'facebook.com', 'pinterest.com',
-                'instagram.com', 'twitter.com', 'linkedin.com'
+                'instagram.com', 'twitter.com', 'linkedin.com',
+                'bing.com', 'tiktok.com'
             ];
 
             const isExcluded = exclusions.some(domain => href.includes(domain));
