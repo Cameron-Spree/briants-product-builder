@@ -122,11 +122,34 @@ app.post('/api/upload-csv', upload.single('file'), (req, res) => {
 });
 
 // Update a product
-app.put('/api/products/:sku', (req, res) => {
-    const idx = products.findIndex(p => p.sku === req.params.sku);
+app.post('/api/products/:sku', (req, res) => {
+    const sku = req.params.sku;
+    const data = req.body;
+
+    // If the frontend sent up a request to create a new parent...
+    if (data.newParentDef) {
+        const parent = {
+            sku: data.newParentDef.sku,
+            name: data.newParentDef.name,
+            type: 'variable',
+            globalAttributeName: data.newParentDef.globalAttributeName,
+            status: 'complete',
+            categories: [...(data.categories || [])] // Inherit categories
+        };
+        // Add if not already tracking
+        if (!products.some(x => x.sku === parent.sku)) {
+            products.push(parent);
+        }
+
+        // Ensure child connects to it directly
+        data.parentSku = parent.sku;
+        delete data.newParentDef;
+    }
+
+    const idx = products.findIndex(p => p.sku === sku);
     if (idx === -1) return res.status(404).json({ error: 'Product not found' });
 
-    products[idx] = { ...products[idx], ...req.body };
+    products[idx] = { ...products[idx], ...data };
     saveProducts();
     res.json(products[idx]);
 });
@@ -299,8 +322,19 @@ app.get('/api/export-csv', (req, res) => {
     const all = req.query.all === 'true';
     const productsToExport = all ? products : products.filter(p => p.status === 'complete');
 
+    // Prepare a map of all parents and their children
+    const parentChildrenMap = {};
+    productsToExport.forEach(p => {
+        if (p.isVariation && p.parentSku) {
+            if (!parentChildrenMap[p.parentSku]) {
+                parentChildrenMap[p.parentSku] = [];
+            }
+            parentChildrenMap[p.parentSku].push(p);
+        }
+    });
 
-    const rows = productsToExport.flatMap(p => {
+    // Helper to generate a generic row struct
+    const generateBaseRow = (p) => {
         const approvedImages = (p.images || [])
             .filter(img => img.approved && img.filename)
             .map(img => `https://${domain}/wp-content/uploads/${img.filename}`)
@@ -308,7 +342,7 @@ app.get('/api/export-csv', (req, res) => {
 
         const categoryStr = (p.categories || []).join(', ');
 
-        const baseRow = {
+        return {
             'ID': '',
             'SKU': p.sku,
             'Name': p.name,
@@ -351,44 +385,59 @@ app.get('/api/export-csv', (req, res) => {
             'Attribute 1 visible': '',
             'Attribute 1 global': ''
         };
+    };
 
-        if (!p.isVariable) {
+    const rows = productsToExport.flatMap(p => {
+        // Simple Products
+        if (!p.isVariation && p.type !== 'variable') {
             return [{
-                ...baseRow,
+                ...generateBaseRow(p),
                 'Type': 'simple',
                 'Regular price': p.price || ''
             }];
         }
 
-        // It's a variable product
-        const attrName = p.globalAttributeName || 'Option';
-        const variations = p.variations || [];
-        const allValues = variations.map(v => v.value).join(', ');
+        // Parent (Variable) Products
+        if (p.type === 'variable') {
+            const attrName = p.globalAttributeName || 'Option';
+            const children = parentChildrenMap[p.sku] || [];
 
-        const parentRow = {
-            ...baseRow,
-            'Type': 'variable',
-            'Regular price': '', // Left empty on parent per instruction
-            'Attribute 1 name': attrName,
-            'Attribute 1 value(s)': allValues,
-            'Attribute 1 global': 1,
-            'Attribute 1 visible': 1
-        };
+            // Gather all distinct values from children bridging to this parent
+            const allValues = children
+                .map(c => c.variationValue)
+                .filter(Boolean)
+                .join(', ');
 
-        const variationRows = variations.map(v => ({
-            ...baseRow,
-            'Type': 'variation',
-            'SKU': v.sku,
-            'Name': `${p.name} - ${v.value}`,
-            'Parent': p.sku,
-            'Regular price': v.price || '',
-            'Attribute 1 name': attrName,
-            'Attribute 1 value(s)': v.value,
-            'Attribute 1 global': 1, // Optional for variations but matching parent is fine
-            'Attribute 1 visible': '' // Usually empty on variations
-        }));
+            return [{
+                ...generateBaseRow(p),
+                'Type': 'variable',
+                'Regular price': '', // Left empty on parent per instruction
+                'Attribute 1 name': attrName,
+                'Attribute 1 value(s)': allValues,
+                'Attribute 1 global': 1,
+                'Attribute 1 visible': 1
+            }];
+        }
 
-        return [parentRow, ...variationRows];
+        // Child (Variation) Products
+        if (p.isVariation) {
+            // Find parent to inherit attribute name (fallback to 'Option')
+            const parent = productsToExport.find(x => x.sku === p.parentSku);
+            const attrName = parent?.globalAttributeName || 'Option';
+
+            return [{
+                ...generateBaseRow(p),
+                'Type': 'variation',
+                'Regular price': p.price || '',
+                'Parent': p.parentSku || '',
+                'Attribute 1 name': attrName,
+                'Attribute 1 value(s)': p.variationValue || '',
+                'Attribute 1 global': 1,
+                'Attribute 1 visible': ''
+            }];
+        }
+
+        return [];
     });
 
     const csv = stringify(rows, { header: true });

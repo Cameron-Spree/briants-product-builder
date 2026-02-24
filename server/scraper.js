@@ -50,9 +50,8 @@ export async function scrapeProductPage(url) {
 export async function autoFindProductUrl(query) {
     const fetch = (await import('node-fetch')).default;
 
-    // We can use a lightweight search engine like DuckDuckGo HTML or similar, 
-    // or just Google search with a standard User-Agent.
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    // Fall back to a Google Search query
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 
     const response = await fetch(searchUrl, {
         headers: {
@@ -73,29 +72,23 @@ export async function autoFindProductUrl(query) {
     // Find the first likely product URL from the results
     let foundUrl = null;
 
-    $('.result__a').each((_, el) => {
+    $('#main a, #search a, .g a').each((_, el) => {
         const href = $(el).attr('href');
-        // DuckDuckGo redirects through //duckduckgo.com/l/?uddg=...
-        if (href && href.includes('uddg=')) {
-            try {
-                const urlParams = new URLSearchParams(href.split('?')[1]);
-                const actualUrl = decodeURIComponent(urlParams.get('uddg'));
 
-                // Exclude common non-ecommerce sites that might rank high
-                const exclusions = ['amazon', 'ebay', 'wikipedia.org', 'youtube.com', 'facebook.com', 'pinterest.com'];
-                const isExcluded = exclusions.some(domain => actualUrl.includes(domain));
+        if (href && href.startsWith('http')) {
+            // Exclude common non-ecommerce sites that rank high
+            const exclusions = [
+                'google', 'amazon', 'ebay', 'wikipedia.org',
+                'youtube.com', 'facebook.com', 'pinterest.com',
+                'instagram.com', 'twitter.com', 'linkedin.com'
+            ];
 
-                if (actualUrl && actualUrl.startsWith('http') && !isExcluded) {
-                    foundUrl = actualUrl;
-                    return false; // Break the each loop
-                }
-            } catch (e) {
-                // Ignore parse errors
+            const isExcluded = exclusions.some(domain => href.includes(domain));
+
+            if (!isExcluded) {
+                foundUrl = href;
+                return false; // Break the each loop
             }
-        } else if (href && href.startsWith('http')) {
-            // Direct link fallback (if they change their DOM)
-            foundUrl = href;
-            return false;
         }
     });
 

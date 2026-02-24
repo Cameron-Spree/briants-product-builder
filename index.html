@@ -167,19 +167,47 @@
                             <div id="type-section" class="section-body">
                                 <div class="input-group">
                                     <label class="checkbox-label">
-                                        <input type="checkbox" id="is-variable-checkbox">
-                                        This is a Variable Product (has multiple options like Size or Color)
+                                        <input type="checkbox" id="is-variation-checkbox">
+                                        This product is a Variation of another product
                                     </label>
                                 </div>
-                                <div id="variations-container" class="hidden" style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                                <div id="variation-setup-container" class="hidden"
+                                    style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+
                                     <div class="input-group">
-                                        <label>Global Attribute Name <span class="input-hint">(e.g., Size, Material, Length)</span></label>
-                                        <input type="text" id="global-attribute-name" class="input-text" placeholder="Size">
+                                        <label>Parent Product</label>
+                                        <select id="parent-product-select" class="input-select">
+                                            <option value="">--- Create New Parent ---</option>
+                                            <!-- Existing parents injected here -->
+                                        </select>
                                     </div>
-                                    <div class="variations-list" id="variations-list">
-                                        <!-- Variations will be inserted here -->
+
+                                    <div id="new-parent-fields" class="sub-panel"
+                                        style="background: rgba(0,0,0,0.05); padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                                        <div class="input-group">
+                                            <label>New Parent Name</label>
+                                            <input type="text" id="new-parent-name" class="input-text"
+                                                placeholder="e.g. Closeboard Fence Panel">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>New Parent SKU</label>
+                                            <input type="text" id="new-parent-sku" class="input-text"
+                                                placeholder="e.g. VAR-FENCE-01">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Global Attribute Name <span class="input-hint">(e.g., Size,
+                                                    Color)</span></label>
+                                            <input type="text" id="global-attribute-name" class="input-text"
+                                                placeholder="Size">
+                                        </div>
                                     </div>
-                                    <button class="btn btn-sm btn-secondary" id="add-variation-btn" style="margin-top: 0.5rem;">+ Add Variation Option</button>
+
+                                    <div class="input-group border-top" style="padding-top: 1rem;">
+                                        <label>This Variation's Option Value <span class="input-hint">(e.g.,
+                                                6ft)</span></label>
+                                        <input type="text" id="variation-value" class="input-text" placeholder="6ft">
+                                    </div>
+
                                 </div>
                             </div>
                         </div>

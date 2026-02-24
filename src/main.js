@@ -246,27 +246,30 @@ function setupWorkspaceView() {
         }
     });
 
-    // Variations
-    document.getElementById('is-variable-checkbox').addEventListener('change', (e) => {
+    // Variations (Inverted)
+    const isVarCheck = document.getElementById('is-variation-checkbox');
+    const varSetup = document.getElementById('variation-setup-container');
+    const parentSelect = document.getElementById('parent-product-select');
+    const newParentFields = document.getElementById('new-parent-fields');
+
+    isVarCheck.addEventListener('change', (e) => {
         const p = getProduct(state.currentSku);
         if (p) {
-            p.isVariable = e.target.checked;
-            if (p.isVariable && !p.variations) p.variations = [];
-            const container = document.getElementById('variations-container');
-            if (p.isVariable) {
-                container.classList.remove('hidden');
-                renderVariations(p);
+            p.isVariation = e.target.checked;
+            if (p.isVariation) {
+                varSetup.classList.remove('hidden');
+                renderParentOptions(p.parentSku);
             } else {
-                container.classList.add('hidden');
+                varSetup.classList.add('hidden');
             }
         }
     });
 
-    document.getElementById('add-variation-btn').addEventListener('click', () => {
-        const p = getProduct(state.currentSku);
-        if (p && p.isVariable) {
-            p.variations.push({ value: '', sku: p.sku + '-VAR' + (p.variations.length + 1), price: '' });
-            renderVariations(p);
+    parentSelect.addEventListener('change', (e) => {
+        if (e.target.value === '') {
+            newParentFields.classList.remove('hidden');
+        } else {
+            newParentFields.classList.add('hidden');
         }
     });
 
@@ -380,14 +383,20 @@ function selectProduct(sku) {
     document.getElementById('editor-status').value = p.status;
 
     // Variations
-    document.getElementById('is-variable-checkbox').checked = !!p.isVariable;
-    if (p.isVariable) {
-        document.getElementById('variations-container').classList.remove('hidden');
-        document.getElementById('global-attribute-name').value = p.globalAttributeName || '';
-        if (!p.variations) p.variations = [];
-        renderVariations(p);
+    document.getElementById('is-variation-checkbox').checked = !!p.isVariation;
+    if (p.isVariation) {
+        document.getElementById('variation-setup-container').classList.remove('hidden');
+        renderParentOptions(p.parentSku);
+
+        if (!p.parentSku) {
+            document.getElementById('new-parent-fields').classList.remove('hidden');
+        } else {
+            document.getElementById('new-parent-fields').classList.add('hidden');
+        }
+
+        document.getElementById('variation-value').value = p.variationValue || '';
     } else {
-        document.getElementById('variations-container').classList.add('hidden');
+        document.getElementById('variation-setup-container').classList.add('hidden');
     }
 
     // Search
@@ -607,18 +616,32 @@ async function saveCurrentProduct() {
     p.featuresHtml = document.getElementById('features-html').value;
     p.notes = document.getElementById('product-notes').value;
 
-    if (p.isVariable) {
-        p.globalAttributeName = document.getElementById('global-attribute-name').value;
-        const varRows = document.querySelectorAll('.variation-row');
-        p.variations = Array.from(varRows).map(row => ({
-            value: row.querySelector('.var-val').value,
-            sku: row.querySelector('.var-sku').value,
-            price: row.querySelector('.var-price').value
-        }));
+    if (p.isVariation) {
+        p.variationValue = document.getElementById('variation-value').value.trim();
+        const selectedParent = document.getElementById('parent-product-select').value;
+
+        if (selectedParent === '') {
+            // Need to set up a new parent configuration to pass to the backend
+            p.parentSku = document.getElementById('new-parent-sku').value.trim();
+            p.newParentDef = {
+                name: document.getElementById('new-parent-name').value.trim(),
+                sku: p.parentSku,
+                globalAttributeName: document.getElementById('global-attribute-name').value.trim()
+            };
+        } else {
+            p.parentSku = selectedParent;
+            delete p.newParentDef;
+        }
+    } else {
+        delete p.parentSku;
+        delete p.variationValue;
+        delete p.newParentDef;
     }
 
     try {
-        await API.updateProduct(p.sku, p);
+        const res = await API.updateProduct(p.sku, p);
+        // If updating created a new product (parent), we should trigger a full list refresh
+        state.products = await API.getProducts();
         toast('Product saved ✓', 'success');
         updateStats();
         renderQueue();
@@ -733,47 +756,22 @@ function toggleCategory(product, catPath) {
 }
 
 // ─── Variations ────────────────────────────────
-function renderVariations(product) {
-    const container = document.getElementById('variations-list');
-    container.innerHTML = '';
+function renderParentOptions(selectedSku) {
+    const select = document.getElementById('parent-product-select');
+    // Keep only the first option (Create New Parent)
+    select.innerHTML = '<option value="">--- Create New Parent ---</option>';
 
-    if (!product.variations || product.variations.length === 0) {
-        container.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;padding:4px">No variations added yet.</span>';
-        return;
-    }
+    // Find all products that are 'virtual' parents
+    const parents = state.products.filter(p => p.type === 'variable');
 
-    product.variations.forEach((vari, idx) => {
-        const row = document.createElement('div');
-        row.className = 'variation-row';
-        row.style.cssText = 'display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: flex-end;';
-
-        row.innerHTML = `
-            <div style="flex: 1;">
-                <label style="font-size: 0.75rem; color: var(--text-secondary);">Value (e.g. 6ft)</label>
-                <input type="text" class="input-text var-val" value="${esc(vari.value)}">
-            </div>
-            <div style="flex: 1;">
-                <label style="font-size: 0.75rem; color: var(--text-secondary);">SKU</label>
-                <input type="text" class="input-text var-sku" value="${esc(vari.sku)}">
-            </div>
-            <div style="flex: 1;">
-                <label style="font-size: 0.75rem; color: var(--text-secondary);">Price (£)</label>
-                <input type="text" class="input-text var-price" value="${esc(vari.price)}">
-            </div>
-            <button class="btn btn-sm btn-danger remove-var" title="Remove Variation" style="padding: 0.6rem;">×</button>
-        `;
-
-        // Update object on change so re-renders don't lose data
-        row.querySelector('.var-val').addEventListener('input', (e) => vari.value = e.target.value);
-        row.querySelector('.var-sku').addEventListener('input', (e) => vari.sku = e.target.value);
-        row.querySelector('.var-price').addEventListener('input', (e) => vari.price = e.target.value);
-
-        row.querySelector('.remove-var').addEventListener('click', () => {
-            product.variations.splice(idx, 1);
-            renderVariations(product);
-        });
-
-        container.appendChild(row);
+    parents.forEach(parent => {
+        const option = document.createElement('option');
+        option.value = parent.sku;
+        option.textContent = `${parent.name} (${parent.sku})`;
+        if (parent.sku === selectedSku) {
+            option.selected = true;
+        }
+        select.appendChild(option);
     });
 }
 
