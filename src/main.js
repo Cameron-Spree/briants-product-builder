@@ -237,11 +237,36 @@ function setupWorkspaceView() {
 
     // Search & Scrape
     document.getElementById('google-search-btn').addEventListener('click', googleSearch);
+    document.getElementById('auto-search-btn').addEventListener('click', autoFindUrl);
     document.getElementById('scrape-btn').addEventListener('click', scrapeProduct);
     document.getElementById('confirmed-url').addEventListener('change', (e) => {
         if (state.currentSku) {
             const p = getProduct(state.currentSku);
             if (p) p.confirmedUrl = e.target.value;
+        }
+    });
+
+    // Variations
+    document.getElementById('is-variable-checkbox').addEventListener('change', (e) => {
+        const p = getProduct(state.currentSku);
+        if (p) {
+            p.isVariable = e.target.checked;
+            if (p.isVariable && !p.variations) p.variations = [];
+            const container = document.getElementById('variations-container');
+            if (p.isVariable) {
+                container.classList.remove('hidden');
+                renderVariations(p);
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+    });
+
+    document.getElementById('add-variation-btn').addEventListener('click', () => {
+        const p = getProduct(state.currentSku);
+        if (p && p.isVariable) {
+            p.variations.push({ value: '', sku: p.sku + '-VAR' + (p.variations.length + 1), price: '' });
+            renderVariations(p);
         }
     });
 
@@ -354,6 +379,17 @@ function selectProduct(sku) {
     setText('editor-price', p.price ? `£${p.price}` : 'No price');
     document.getElementById('editor-status').value = p.status;
 
+    // Variations
+    document.getElementById('is-variable-checkbox').checked = !!p.isVariable;
+    if (p.isVariable) {
+        document.getElementById('variations-container').classList.remove('hidden');
+        document.getElementById('global-attribute-name').value = p.globalAttributeName || '';
+        if (!p.variations) p.variations = [];
+        renderVariations(p);
+    } else {
+        document.getElementById('variations-container').classList.add('hidden');
+    }
+
     // Search
     document.getElementById('confirmed-url').value = p.confirmedUrl || '';
 
@@ -465,6 +501,40 @@ async function scrapeProduct() {
     }
 }
 
+async function autoFindUrl() {
+    const p = getProduct(state.currentSku);
+    if (!p) return;
+
+    const btn = document.getElementById('auto-search-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '🤖 Searching...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/auto-find-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: p.name })
+        });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Failed to find URL');
+        if (!data.url) throw new Error('No valid URL found');
+
+        // Populate the URL field and trigger a scrape
+        document.getElementById('confirmed-url').value = data.url;
+        p.confirmedUrl = data.url;
+        toast('URL found! Scraping...', 'info');
+        await scrapeProduct();
+
+    } catch (e) {
+        toast('Auto-Search failed: ' + e.message, 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
 async function aiGenerateContent() {
     const p = getProduct(state.currentSku);
     if (!p) return;
@@ -536,6 +606,16 @@ async function saveCurrentProduct() {
     p.longDescription = document.getElementById('long-desc').value;
     p.featuresHtml = document.getElementById('features-html').value;
     p.notes = document.getElementById('product-notes').value;
+
+    if (p.isVariable) {
+        p.globalAttributeName = document.getElementById('global-attribute-name').value;
+        const varRows = document.querySelectorAll('.variation-row');
+        p.variations = Array.from(varRows).map(row => ({
+            value: row.querySelector('.var-val').value,
+            sku: row.querySelector('.var-sku').value,
+            price: row.querySelector('.var-price').value
+        }));
+    }
 
     try {
         await API.updateProduct(p.sku, p);
@@ -650,6 +730,51 @@ function toggleCategory(product, catPath) {
     } else {
         product.categories.splice(idx, 1);
     }
+}
+
+// ─── Variations ────────────────────────────────
+function renderVariations(product) {
+    const container = document.getElementById('variations-list');
+    container.innerHTML = '';
+
+    if (!product.variations || product.variations.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;padding:4px">No variations added yet.</span>';
+        return;
+    }
+
+    product.variations.forEach((vari, idx) => {
+        const row = document.createElement('div');
+        row.className = 'variation-row';
+        row.style.cssText = 'display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: flex-end;';
+
+        row.innerHTML = `
+            <div style="flex: 1;">
+                <label style="font-size: 0.75rem; color: var(--text-secondary);">Value (e.g. 6ft)</label>
+                <input type="text" class="input-text var-val" value="${esc(vari.value)}">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 0.75rem; color: var(--text-secondary);">SKU</label>
+                <input type="text" class="input-text var-sku" value="${esc(vari.sku)}">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 0.75rem; color: var(--text-secondary);">Price (£)</label>
+                <input type="text" class="input-text var-price" value="${esc(vari.price)}">
+            </div>
+            <button class="btn btn-sm btn-danger remove-var" title="Remove Variation" style="padding: 0.6rem;">×</button>
+        `;
+
+        // Update object on change so re-renders don't lose data
+        row.querySelector('.var-val').addEventListener('input', (e) => vari.value = e.target.value);
+        row.querySelector('.var-sku').addEventListener('input', (e) => vari.sku = e.target.value);
+        row.querySelector('.var-price').addEventListener('input', (e) => vari.price = e.target.value);
+
+        row.querySelector('.remove-var').addEventListener('click', () => {
+            product.variations.splice(idx, 1);
+            renderVariations(product);
+        });
+
+        container.appendChild(row);
+    });
 }
 
 // ─── Images ────────────────────────────────────

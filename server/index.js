@@ -6,7 +6,7 @@ import { stringify } from 'csv-stringify/sync';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { scrapeProductPage } from './scraper.js';
+import { scrapeProductPage, autoFindProductUrl } from './scraper.js';
 import { suggestCategories, getAllCategories } from './categories.js';
 import { generateProductContent } from './gemini.js';
 import AdmZip from 'adm-zip';
@@ -142,6 +142,24 @@ app.post('/api/scrape', async (req, res) => {
     } catch (e) {
         console.error('Scrape error:', e);
         res.status(500).json({ error: 'Failed to scrape: ' + e.message });
+    }
+});
+
+// Auto-find a product URL
+app.post('/api/auto-find-url', async (req, res) => {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: 'Query is required' });
+
+    try {
+        const url = await autoFindProductUrl(query);
+        if (url) {
+            res.json({ url });
+        } else {
+            res.status(404).json({ error: 'Could not automatically find a valid URL' });
+        }
+    } catch (e) {
+        console.error('Auto-find error:', e);
+        res.status(500).json({ error: 'Auto-find failed: ' + e.message });
     }
 });
 
@@ -282,7 +300,7 @@ app.get('/api/export-csv', (req, res) => {
     const productsToExport = all ? products : products.filter(p => p.status === 'complete');
 
 
-    const rows = productsToExport.map(p => {
+    const rows = productsToExport.flatMap(p => {
         const approvedImages = (p.images || [])
             .filter(img => img.approved && img.filename)
             .map(img => `https://${domain}/wp-content/uploads/${img.filename}`)
@@ -290,9 +308,8 @@ app.get('/api/export-csv', (req, res) => {
 
         const categoryStr = (p.categories || []).join(', ');
 
-        return {
+        const baseRow = {
             'ID': '',
-            'Type': 'simple',
             'SKU': p.sku,
             'Name': p.name,
             'Published': 1,
@@ -316,7 +333,6 @@ app.get('/api/export-csv', (req, res) => {
             'Allow customer reviews?': 1,
             'Purchase note': '',
             'Sale price': '',
-            'Regular price': p.price || '',
             'Categories': categoryStr,
             'Tags': '',
             'Shipping class': '',
@@ -335,6 +351,44 @@ app.get('/api/export-csv', (req, res) => {
             'Attribute 1 visible': '',
             'Attribute 1 global': ''
         };
+
+        if (!p.isVariable) {
+            return [{
+                ...baseRow,
+                'Type': 'simple',
+                'Regular price': p.price || ''
+            }];
+        }
+
+        // It's a variable product
+        const attrName = p.globalAttributeName || 'Option';
+        const variations = p.variations || [];
+        const allValues = variations.map(v => v.value).join(', ');
+
+        const parentRow = {
+            ...baseRow,
+            'Type': 'variable',
+            'Regular price': '', // Left empty on parent per instruction
+            'Attribute 1 name': attrName,
+            'Attribute 1 value(s)': allValues,
+            'Attribute 1 global': 1,
+            'Attribute 1 visible': 1
+        };
+
+        const variationRows = variations.map(v => ({
+            ...baseRow,
+            'Type': 'variation',
+            'SKU': v.sku,
+            'Name': `${p.name} - ${v.value}`,
+            'Parent': p.sku,
+            'Regular price': v.price || '',
+            'Attribute 1 name': attrName,
+            'Attribute 1 value(s)': v.value,
+            'Attribute 1 global': 1, // Optional for variations but matching parent is fine
+            'Attribute 1 visible': '' // Usually empty on variations
+        }));
+
+        return [parentRow, ...variationRows];
     });
 
     const csv = stringify(rows, { header: true });

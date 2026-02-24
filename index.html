@@ -158,6 +158,32 @@
                             </div>
                         </div>
 
+                        <!-- Section: Product Type & Variations -->
+                        <div class="editor-section glass-panel">
+                            <div class="section-header" data-toggle="type-section">
+                                <h3>📦 Product Type & Variations</h3>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div id="type-section" class="section-body">
+                                <div class="input-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="is-variable-checkbox">
+                                        This is a Variable Product (has multiple options like Size or Color)
+                                    </label>
+                                </div>
+                                <div id="variations-container" class="hidden" style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                                    <div class="input-group">
+                                        <label>Global Attribute Name <span class="input-hint">(e.g., Size, Material, Length)</span></label>
+                                        <input type="text" id="global-attribute-name" class="input-text" placeholder="Size">
+                                    </div>
+                                    <div class="variations-list" id="variations-list">
+                                        <!-- Variations will be inserted here -->
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" id="add-variation-btn" style="margin-top: 0.5rem;">+ Add Variation Option</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Section: Search & Confirm -->
                         <div class="editor-section glass-panel">
                             <div class="section-header" data-toggle="search-section">
@@ -167,8 +193,8 @@
                             <div id="search-section" class="section-body">
                                 <div class="search-actions">
                                     <button class="btn btn-primary" id="google-search-btn">Search Google</button>
-                                    <span class="search-hint">Opens Google in a new tab — paste the correct URL
-                                        below</span>
+                                    <button class="btn btn-success" id="auto-search-btn">🤖 Auto-Search & Fill</button>
+                                    <span class="search-hint">Finds and scrapes automatically</span>
                                 </div>
                                 <div class="input-group">
                                     <label>Confirmed Product URL</label>

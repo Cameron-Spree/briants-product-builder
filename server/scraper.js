@@ -44,6 +44,64 @@ export async function scrapeProductPage(url) {
     return result;
 }
 
+/**
+ * Automatically search for a product and return the first valid URL
+ */
+export async function autoFindProductUrl(query) {
+    const fetch = (await import('node-fetch')).default;
+
+    // We can use a lightweight search engine like DuckDuckGo HTML or similar, 
+    // or just Google search with a standard User-Agent.
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+
+    const response = await fetch(searchUrl, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-GB,en;q=0.9'
+        },
+        timeout: 10000
+    });
+
+    if (!response.ok) {
+        throw new Error(`Search failed: HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    // Find the first likely product URL from the results
+    let foundUrl = null;
+
+    $('.result__a').each((_, el) => {
+        const href = $(el).attr('href');
+        // DuckDuckGo redirects through //duckduckgo.com/l/?uddg=...
+        if (href && href.includes('uddg=')) {
+            try {
+                const urlParams = new URLSearchParams(href.split('?')[1]);
+                const actualUrl = decodeURIComponent(urlParams.get('uddg'));
+
+                // Exclude common non-ecommerce sites that might rank high
+                const exclusions = ['amazon', 'ebay', 'wikipedia.org', 'youtube.com', 'facebook.com', 'pinterest.com'];
+                const isExcluded = exclusions.some(domain => actualUrl.includes(domain));
+
+                if (actualUrl && actualUrl.startsWith('http') && !isExcluded) {
+                    foundUrl = actualUrl;
+                    return false; // Break the each loop
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        } else if (href && href.startsWith('http')) {
+            // Direct link fallback (if they change their DOM)
+            foundUrl = href;
+            return false;
+        }
+    });
+
+    return foundUrl;
+}
+
 function extractTitle($) {
     const selectors = [
         'h1.product_title',
