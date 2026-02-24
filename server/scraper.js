@@ -50,15 +50,20 @@ export async function scrapeProductPage(url) {
 export async function autoFindProductUrl(query) {
     const fetch = (await import('node-fetch')).default;
 
-    // Use Yahoo Search as it is much more lenient with standard scraper user-agents
-    const searchUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
+    // Use DuckDuckGo Lite (HTML only, bot-friendly form POST)
+    const searchUrl = 'https://lite.duckduckgo.com/lite/';
 
     const response = await fetch(searchUrl, {
+        method: 'POST',
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-GB,en;q=0.9'
+            'Accept-Language': 'en-GB,en;q=0.9',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://lite.duckduckgo.com',
+            'Referer': 'https://lite.duckduckgo.com/'
         },
+        body: `q=${encodeURIComponent(query)}`,
         timeout: 10000
     });
 
@@ -72,28 +77,17 @@ export async function autoFindProductUrl(query) {
     // Find the first likely product URL from the results
     let foundUrl = null;
 
-    $('h3.title a, .compTitle a, #web a').each((_, el) => {
+    $('a.result-link').each((_, el) => {
         let href = $(el).attr('href');
-
-        // Note: Yahoo sometimes wraps links like https://r.search.yahoo.com/.../RU=https://actual-link.com/...
-        if (href && href.includes('RU=')) {
-            try {
-                const ruMatch = href.match(/RU=([^/]+)/);
-                if (ruMatch && ruMatch[1]) {
-                    href = decodeURIComponent(ruMatch[1]);
-                }
-            } catch (e) {
-                // ignore
-            }
-        }
 
         if (href && href.startsWith('http')) {
             // Exclude common non-ecommerce sites that rank high
             const exclusions = [
-                'yahoo.com', 'google.com', 'amazon', 'ebay', 'wikipedia.org',
+                'duckduckgo.com', 'yahoo.com', 'google.com', 'amazon', 'ebay', 'wikipedia.org',
                 'youtube.com', 'facebook.com', 'pinterest.com',
                 'instagram.com', 'twitter.com', 'linkedin.com',
-                'bing.com', 'tiktok.com'
+                'bing.com', 'tiktok.com', 'yell.com', 'yelp.com',
+                'checkatrade.com', 'trustpilot.com'
             ];
 
             const isExcluded = exclusions.some(domain => href.includes(domain));
