@@ -14,7 +14,8 @@ const state = {
     currentView: 'upload',
     currentSku: null,
     filter: 'all',
-    searchQuery: ''
+    searchQuery: '',
+    isAutoScraping: false
 };
 
 // ════════════════════════════════════════════════
@@ -555,6 +556,16 @@ async function autoFindUrl() {
 }
 
 async function autoScrapeAll() {
+    const btn = document.getElementById('auto-scrape-all-btn');
+
+    // If already running, cancel it
+    if (state.isAutoScraping) {
+        state.isAutoScraping = false;
+        btn.innerHTML = '🛑 Cancelling...';
+        btn.disabled = true; // prevent double clicks while it winds down
+        return;
+    }
+
     // Only target pending products
     const pendingProducts = state.products.filter(p => p.status === 'pending');
     if (pendingProducts.length === 0) {
@@ -566,15 +577,21 @@ async function autoScrapeAll() {
         return;
     }
 
-    const btn = document.getElementById('auto-scrape-all-btn');
+    state.isAutoScraping = true;
     const originalText = btn.innerHTML;
-    btn.innerHTML = '🤖 Scraping All...';
-    btn.disabled = true;
+    btn.innerHTML = '🛑 Cancel Auto-Scrape';
+    btn.classList.add('btn-danger'); // Make it look like a cancel button
+    btn.classList.remove('btn-secondary');
 
     let successCount = 0;
     let failCount = 0;
 
     for (const p of pendingProducts) {
+        if (!state.isAutoScraping) {
+            toast('Auto-scrape cancelled by user', 'info');
+            break;
+        }
+
         // Switch view to it so user sees progress
         selectProduct(p.sku);
 
@@ -589,15 +606,22 @@ async function autoScrapeAll() {
             }
         } catch (e) {
             console.error('Auto scrape failed for', p.sku, e);
+            toast(`Skipping ${p.sku}: ${e.message}`, 'error');
             failCount++;
         }
 
-        // Wait 2 seconds between products to avoid rate limit / aggressive scraping bans
+        // Wait 2 seconds between products to avoid rate limit / aggressive scraping bans 
+        // (unless cancelled, then break immediately)
+        if (!state.isAutoScraping) break;
         await new Promise(r => setTimeout(r, 2000));
     }
 
+    state.isAutoScraping = false;
     btn.innerHTML = originalText;
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-secondary');
     btn.disabled = false;
+
     toast(`Finished auto-scraping. ${successCount} succeeded, ${failCount} failed.`, 'success');
 }
 

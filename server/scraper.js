@@ -99,6 +99,10 @@ export async function autoFindProductUrl(query) {
         }
     });
 
+    if (!foundUrl) {
+        throw new Error('No valid e-commerce URL found in search results');
+    }
+
     return foundUrl;
 }
 
