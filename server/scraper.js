@@ -44,13 +44,108 @@ export async function scrapeProductPage(url) {
     return result;
 }
 
-/**
- * Automatically search for a product and return the first valid URL
- */
-export async function autoFindProductUrl(query) {
-    const fetch = (await import('node-fetch')).default;
+// ─── URL Exclusion List ───────────────────────────────
+const URL_EXCLUSIONS = [
+    'duckduckgo.com', 'yahoo.com', 'google.com', 'amazon', 'ebay', 'wikipedia.org',
+    'youtube.com', 'facebook.com', 'pinterest.com',
+    'instagram.com', 'twitter.com', 'linkedin.com',
+    'bing.com', 'tiktok.com', 'yell.com', 'yelp.com',
+    'checkatrade.com', 'trustpilot.com', 'reddit.com'
+];
 
-    // Use DuckDuckGo Lite (HTML only, bot-friendly form POST)
+function isExcludedUrl(href) {
+    return URL_EXCLUSIONS.some(domain => href.includes(domain));
+}
+
+/**
+ * Automatically search for a product URL.
+ * Strategy: Google Custom Search API (if keys provided) → DuckDuckGo with retries.
+ */
+export async function autoFindProductUrl(query, { googleApiKey, googleCseId } = {}) {
+    // Strategy 1: Google Custom Search API (most reliable, 100 free/day)
+    if (googleApiKey && googleCseId) {
+        console.log(`[Search] Trying Google Custom Search for: "${query}"`);
+        try {
+            const url = await googleCustomSearch(query, googleApiKey, googleCseId);
+            if (url) {
+                console.log(`[Search] Google found: ${url}`);
+                return url;
+            }
+        } catch (e) {
+            console.warn(`[Search] Google Custom Search failed: ${e.message}. Falling back to DuckDuckGo.`);
+        }
+    }
+
+    // Strategy 2: DuckDuckGo with retries and exponential backoff
+    console.log(`[Search] Trying DuckDuckGo for: "${query}"`);
+    const maxRetries = 3;
+    const baseDelay = 5000; // 5 seconds
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const url = await duckDuckGoSearch(query);
+            if (url) {
+                console.log(`[Search] DDG found (attempt ${attempt}): ${url}`);
+                return url;
+            }
+        } catch (e) {
+            console.warn(`[Search] DDG attempt ${attempt}/${maxRetries} failed: ${e.message}`);
+        }
+
+        if (attempt < maxRetries) {
+            const delay = baseDelay * Math.pow(2, attempt - 1); // 5s, 10s, 20s
+            console.log(`[Search] Waiting ${delay / 1000}s before retry...`);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+
+    throw new Error('No valid e-commerce URL found after trying all search methods');
+}
+
+/**
+ * Google Custom Search API
+ * Free: 100 queries/day. Setup: https://programmablesearchengine.google.com
+ */
+async function googleCustomSearch(query, apiKey, cseId) {
+    const fetch = (await import('node-fetch')).default;
+    const params = new URLSearchParams({
+        key: apiKey,
+        cx: cseId,
+        q: query,
+        num: '5'
+    });
+
+    const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`, {
+        headers: { 'Accept': 'application/json' },
+        timeout: 10000
+    });
+
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Google API HTTP ${response.status}: ${body.substring(0, 200)}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.items || data.items.length === 0) {
+        return null;
+    }
+
+    // Find first non-excluded result
+    for (const item of data.items) {
+        if (item.link && !isExcludedUrl(item.link)) {
+            return item.link;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * DuckDuckGo Lite search (fallback)
+ */
+async function duckDuckGoSearch(query) {
+    const fetch = (await import('node-fetch')).default;
     const searchUrl = 'https://lite.duckduckgo.com/lite/';
 
     const response = await fetch(searchUrl, {
@@ -68,39 +163,26 @@ export async function autoFindProductUrl(query) {
     });
 
     if (!response.ok) {
-        throw new Error(`Search failed: HTTP ${response.status}`);
+        throw new Error(`DDG HTTP ${response.status}`);
     }
 
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Find the first likely product URL from the results
     let foundUrl = null;
 
-    $('a.result-link').each((_, el) => {
-        let href = $(el).attr('href');
+    // Try multiple selectors — DDG Lite changes its HTML periodically
+    const linkSelectors = ['a.result-link', 'a.result__a', '.result-link a', 'td a[href^="http"]'];
 
-        if (href && href.startsWith('http')) {
-            // Exclude common non-ecommerce sites that rank high
-            const exclusions = [
-                'duckduckgo.com', 'yahoo.com', 'google.com', 'amazon', 'ebay', 'wikipedia.org',
-                'youtube.com', 'facebook.com', 'pinterest.com',
-                'instagram.com', 'twitter.com', 'linkedin.com',
-                'bing.com', 'tiktok.com', 'yell.com', 'yelp.com',
-                'checkatrade.com', 'trustpilot.com'
-            ];
-
-            const isExcluded = exclusions.some(domain => href.includes(domain));
-
-            if (!isExcluded) {
+    for (const selector of linkSelectors) {
+        $(selector).each((_, el) => {
+            let href = $(el).attr('href');
+            if (href && href.startsWith('http') && !isExcludedUrl(href)) {
                 foundUrl = href;
-                return false; // Break the each loop
+                return false;
             }
-        }
-    });
-
-    if (!foundUrl) {
-        throw new Error('No valid e-commerce URL found in search results');
+        });
+        if (foundUrl) break;
     }
 
     return foundUrl;

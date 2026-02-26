@@ -241,6 +241,7 @@ function setupWorkspaceView() {
     document.getElementById('auto-search-btn').addEventListener('click', autoFindUrl);
     document.getElementById('auto-scrape-all-btn').addEventListener('click', autoScrapeAll);
     document.getElementById('scrape-btn').addEventListener('click', scrapeProduct);
+    document.getElementById('batch-assign-btn').addEventListener('click', batchAssignUrls);
     document.getElementById('confirmed-url').addEventListener('change', (e) => {
         if (state.currentSku) {
             const p = getProduct(state.currentSku);
@@ -610,10 +611,10 @@ async function autoScrapeAll() {
             failCount++;
         }
 
-        // Wait 2 seconds between products to avoid rate limit / aggressive scraping bans 
+        // Wait 8 seconds between products to avoid rate limit / aggressive scraping bans 
         // (unless cancelled, then break immediately)
         if (!state.isAutoScraping) break;
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 8000));
     }
 
     state.isAutoScraping = false;
@@ -623,6 +624,77 @@ async function autoScrapeAll() {
     btn.disabled = false;
 
     toast(`Finished auto-scraping. ${successCount} succeeded, ${failCount} failed.`, 'success');
+}
+
+async function batchAssignUrls() {
+    const textarea = document.getElementById('batch-urls');
+    const rawText = textarea.value.trim();
+
+    if (!rawText) {
+        toast('Please paste some URLs first (one per line)', 'error');
+        return;
+    }
+
+    const urls = rawText.split('\n').map(u => u.trim()).filter(u => u.startsWith('http'));
+
+    if (urls.length === 0) {
+        toast('No valid URLs found. Make sure each line starts with http:// or https://', 'error');
+        return;
+    }
+
+    const pendingProducts = state.products.filter(p => p.status === 'pending');
+
+    if (pendingProducts.length === 0) {
+        toast('No pending products to assign URLs to', 'info');
+        return;
+    }
+
+    const assignCount = Math.min(urls.length, pendingProducts.length);
+
+    if (!confirm(`Assign ${assignCount} URLs to the first ${assignCount} pending products, then scrape them all?`)) {
+        return;
+    }
+
+    // Assign URLs to pending products
+    for (let i = 0; i < assignCount; i++) {
+        pendingProducts[i].confirmedUrl = urls[i];
+    }
+
+    textarea.value = '';
+    toast(`Assigned ${assignCount} URLs. Now scraping...`, 'success');
+
+    // Now scrape each one
+    const btn = document.getElementById('batch-assign-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Scraping...';
+    btn.disabled = true;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < assignCount; i++) {
+        const p = pendingProducts[i];
+        selectProduct(p.sku);
+        document.getElementById('confirmed-url').value = p.confirmedUrl;
+
+        toast(`Scraping ${p.name}...`, 'info');
+
+        try {
+            await scrapeProduct();
+            successCount++;
+        } catch (e) {
+            console.error('Batch scrape failed for', p.sku, e);
+            toast(`Failed: ${p.sku} - ${e.message}`, 'error');
+            failCount++;
+        }
+
+        // Short delay between scrapes
+        await new Promise(r => setTimeout(r, 1500));
+    }
+
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    toast(`Batch complete: ${successCount} scraped, ${failCount} failed.`, 'success');
 }
 
 async function aiGenerateContent() {
@@ -1137,7 +1209,9 @@ function toast(message, type = 'info') {
 // ─── Settings Modal ───────────────────────────
 function setupSettings() {
     const modal = document.getElementById('settings-modal');
-    const keyInput = document.getElementById('gemini-api-key');
+    const geminiInput = document.getElementById('gemini-api-key');
+    const googleKeyInput = document.getElementById('google-api-key');
+    const googleCseInput = document.getElementById('google-cse-id');
     const saveBtn = document.getElementById('save-settings-btn');
     const statusEl = document.getElementById('settings-status');
 
@@ -1155,21 +1229,34 @@ function setupSettings() {
     });
 
     saveBtn.addEventListener('click', async () => {
-        const key = keyInput.value.trim();
-        if (!key) {
-            statusEl.textContent = 'Please enter a key';
+        const payload = {};
+        const gemKey = geminiInput.value.trim();
+        const gKey = googleKeyInput.value.trim();
+        const cseId = googleCseInput.value.trim();
+
+        if (gemKey) payload.geminiApiKey = gemKey;
+        if (gKey) payload.googleApiKey = gKey;
+        if (cseId) payload.googleCseId = cseId;
+
+        if (Object.keys(payload).length === 0) {
+            statusEl.textContent = 'Please fill in at least one field';
             statusEl.className = 'settings-status';
             return;
         }
 
         try {
-            const result = await API.saveSettings({ geminiApiKey: key });
-            statusEl.textContent = `Key saved: ${result.geminiApiKey}`;
+            const result = await API.saveSettings(payload);
+            const msgs = [];
+            if (result.geminiApiKey) msgs.push(`Gemini: ${result.geminiApiKey}`);
+            if (result.googleApiKey) msgs.push(`Google: ${result.googleApiKey}`);
+            if (result.googleCseId) msgs.push(`CSE ID: ${result.googleCseId}`);
+            statusEl.textContent = `Saved: ${msgs.join(' | ')}`;
             statusEl.className = 'settings-status saved';
-            keyInput.value = '';
-            toast('Gemini API key saved!', 'success');
+            geminiInput.value = '';
+            googleKeyInput.value = '';
+            googleCseInput.value = '';
+            toast('Settings saved!', 'success');
 
-            // Auto-close after a moment
             setTimeout(() => modal.classList.add('hidden'), 1500);
         } catch (e) {
             statusEl.textContent = 'Failed to save: ' + e.message;
@@ -1179,8 +1266,12 @@ function setupSettings() {
 
     // Load current status
     API.getSettings().then(s => {
-        if (s.geminiApiKey) {
-            statusEl.textContent = `Key configured: ${s.geminiApiKey}`;
+        const msgs = [];
+        if (s.geminiApiKey) msgs.push(`Gemini: ${s.geminiApiKey}`);
+        if (s.googleApiKey) msgs.push(`Google: ${s.googleApiKey}`);
+        if (s.googleCseId) msgs.push(`CSE: ${s.googleCseId}`);
+        if (msgs.length > 0) {
+            statusEl.textContent = `Configured: ${msgs.join(' | ')}`;
             statusEl.className = 'settings-status saved';
         }
     }).catch(() => { });

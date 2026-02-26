@@ -32,7 +32,9 @@ const upload = multer({ dest: path.join(DATA_DIR, 'uploads') });
 
 // ── State ──────────────────────────────────────────────
 let products = loadProducts();
-let geminiApiKey = '';  // Set via /api/settings
+let geminiApiKey = '';      // Set via /api/settings
+let googleApiKey = '';      // Google Custom Search API key
+let googleCseId = '';       // Google Programmable Search Engine ID
 
 function loadProducts() {
     try {
@@ -174,7 +176,7 @@ app.post('/api/auto-find-url', async (req, res) => {
     if (!query) return res.status(400).json({ error: 'Query is required' });
 
     try {
-        const url = await autoFindProductUrl(query);
+        const url = await autoFindProductUrl(query, { googleApiKey, googleCseId });
         if (url) {
             res.json({ url });
         } else {
@@ -198,11 +200,25 @@ app.post('/api/settings', (req, res) => {
     if (req.body.geminiApiKey !== undefined) {
         geminiApiKey = req.body.geminiApiKey;
     }
-    res.json({ geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '' });
+    if (req.body.googleApiKey !== undefined) {
+        googleApiKey = req.body.googleApiKey;
+    }
+    if (req.body.googleCseId !== undefined) {
+        googleCseId = req.body.googleCseId;
+    }
+    res.json({
+        geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '',
+        googleApiKey: googleApiKey ? '****' + googleApiKey.slice(-4) : '',
+        googleCseId: googleCseId || ''
+    });
 });
 
 app.get('/api/settings', (req, res) => {
-    res.json({ geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '' });
+    res.json({
+        geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '',
+        googleApiKey: googleApiKey ? '****' + googleApiKey.slice(-4) : '',
+        googleCseId: googleCseId || ''
+    });
 });
 
 // Generate content with Gemini AI
