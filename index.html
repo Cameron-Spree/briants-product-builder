@@ -121,6 +121,10 @@
                     </div>
                     <div class="sidebar-search">
                         <input type="text" id="queue-search" class="input-text" placeholder="Search products...">
+                        <button class="btn btn-sm btn-success" id="auto-scrape-all-btn"
+                            style="margin-top: 8px; width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px;"
+                            title="Automatically search and scrape all pending products">🤖 Auto-Scrape All
+                            Pending</button>
                     </div>
                     <div id="product-queue" class="product-queue"></div>
                 </aside>
@@ -208,6 +212,18 @@
                                         <input type="text" id="variation-value" class="input-text" placeholder="6ft">
                                     </div>
 
+                                </div>
+
+                                <!-- Container for Parents to see their children -->
+                                <div id="parent-setup-container" class="hidden"
+                                    style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                                    <label
+                                        style="font-weight: 600; display: block; margin-bottom: 0.5rem; color: var(--text-color);">Variations
+                                        assigned to this product:</label>
+                                    <div id="parent-variations-list"
+                                        style="display: flex; flex-direction: column; gap: 6px;">
+                                        <!-- Variations will be injected here by JS -->
+                                    </div>
                                 </div>
                             </div>
                         </div>

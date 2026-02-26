@@ -238,6 +238,7 @@ function setupWorkspaceView() {
     // Search & Scrape
     document.getElementById('google-search-btn').addEventListener('click', googleSearch);
     document.getElementById('auto-search-btn').addEventListener('click', autoFindUrl);
+    document.getElementById('auto-scrape-all-btn').addEventListener('click', autoScrapeAll);
     document.getElementById('scrape-btn').addEventListener('click', scrapeProduct);
     document.getElementById('confirmed-url').addEventListener('change', (e) => {
         if (state.currentSku) {
@@ -399,6 +400,14 @@ function selectProduct(sku) {
         document.getElementById('variation-setup-container').classList.add('hidden');
     }
 
+    const parentSetupContainer = document.getElementById('parent-setup-container');
+    if (p.type === 'variable') {
+        parentSetupContainer.classList.remove('hidden');
+        renderParentChildrenList(p.sku);
+    } else {
+        parentSetupContainer.classList.add('hidden');
+    }
+
     // Search
     document.getElementById('confirmed-url').value = p.confirmedUrl || '';
 
@@ -538,10 +547,58 @@ async function autoFindUrl() {
 
     } catch (e) {
         toast('Auto-Search failed: ' + e.message, 'error');
+        throw e; // rethrow so autoScrapeAll can catch it
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
+}
+
+async function autoScrapeAll() {
+    // Only target pending products
+    const pendingProducts = state.products.filter(p => p.status === 'pending');
+    if (pendingProducts.length === 0) {
+        toast('No pending products to scrape', 'info');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to auto-scrape ${pendingProducts.length} pending products?`)) {
+        return;
+    }
+
+    const btn = document.getElementById('auto-scrape-all-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '🤖 Scraping All...';
+    btn.disabled = true;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const p of pendingProducts) {
+        // Switch view to it so user sees progress
+        selectProduct(p.sku);
+
+        toast(`Auto-scraping ${p.name}...`, 'info');
+
+        try {
+            await autoFindUrl();
+            if (getProduct(p.sku).status === 'confirmed') {
+                successCount++;
+            } else {
+                failCount++;
+            }
+        } catch (e) {
+            console.error('Auto scrape failed for', p.sku, e);
+            failCount++;
+        }
+
+        // Wait 2 seconds between products to avoid rate limit / aggressive scraping bans
+        await new Promise(r => setTimeout(r, 2000));
+    }
+
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    toast(`Finished auto-scraping. ${successCount} succeeded, ${failCount} failed.`, 'success');
 }
 
 async function aiGenerateContent() {
@@ -775,6 +832,46 @@ function renderParentOptions(selectedSku) {
     });
 }
 
+function renderParentChildrenList(parentSku) {
+    const list = document.getElementById('parent-variations-list');
+    list.innerHTML = '';
+
+    const children = state.products.filter(p => p.isVariation && p.parentSku === parentSku);
+
+    if (children.length === 0) {
+        list.innerHTML = '<div style="color:var(--text-muted); font-size: 0.85rem; padding: 4px;">No variations assigned to this parent yet.</div>';
+        return;
+    }
+
+    children.forEach(child => {
+        const el = document.createElement('div');
+        el.className = 'queue-item';
+        el.style.border = '1px solid var(--border-color)';
+        el.style.padding = '8px';
+        el.style.borderRadius = '4px';
+        el.style.cursor = 'pointer';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'space-between';
+
+        el.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+                <span style="font-weight:600; font-size:0.9rem;">${esc(child.name)}</span>
+                <span style="color:var(--text-muted); font-size:0.8rem;">SKU: ${child.sku} | Value: ${esc(child.variationValue || 'none')}</span>
+            </div>
+            <span class="status-dot ${child.status}" style="margin-right:0;"></span>
+        `;
+
+        el.addEventListener('click', () => {
+            selectProduct(child.sku);
+            // Optionally, we could jump the UI back to the top of the editor
+            document.querySelector('.workspace-layout').scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        list.appendChild(el);
+    });
+}
+
 // ─── Images ────────────────────────────────────
 function renderImages(product) {
     const gallery = document.getElementById('image-gallery');
@@ -788,10 +885,16 @@ function renderImages(product) {
     product.images.forEach((img, idx) => {
         const card = document.createElement('div');
         card.className = `image-card${img.approved ? ' approved' : ''}`;
+
+        // Add a handler to show natural dimensions once image loads
+        const imgId = `img-dim-${Math.random().toString(36).substr(2, 9)}`;
+
         card.innerHTML = `
       <img src="${esc(img.url)}" alt="Product image ${idx + 1}" loading="lazy"
+        onload="document.getElementById('${imgId}').textContent = this.naturalWidth + ' × ' + this.naturalHeight;"
         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23222%22 width=%22150%22 height=%22150%22/><text fill=%22%23666%22 x=%2275%22 y=%2275%22 text-anchor=%22middle%22 dy=%22.3em%22 font-size=%2212%22>Failed to load</text></svg>'">
       ${img.approved ? '<div class="image-badge">✓</div>' : ''}
+      <div id="${imgId}" style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 0.7rem; text-align: center; padding: 2px;">Loading...</div>
       <div class="image-overlay">
         <div class="image-actions">
           <button class="btn btn-sm ${img.approved ? 'btn-danger' : 'btn-success'}" data-action="toggle">

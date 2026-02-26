@@ -337,12 +337,11 @@ app.get('/api/export-csv', (req, res) => {
     const generateBaseRow = (p) => {
         const approvedImages = (p.images || [])
             .filter(img => img.approved && img.filename)
-            .map(img => `https://${domain}/wp-content/uploads/${img.filename}`)
-            .join(', ');
+            .map(img => `https://${domain}/wp-content/uploads/${img.filename}`);
 
         const categoryStr = (p.categories || []).join(', ');
 
-        return {
+        const baseRow = {
             'ID': '',
             'SKU': p.sku,
             'Name': p.name,
@@ -370,7 +369,6 @@ app.get('/api/export-csv', (req, res) => {
             'Categories': categoryStr,
             'Tags': '',
             'Shipping class': '',
-            'Images': approvedImages,
             'Download limit': '',
             'Download expiry days': '',
             'Parent': '',
@@ -385,6 +383,13 @@ app.get('/api/export-csv', (req, res) => {
             'Attribute 1 visible': '',
             'Attribute 1 global': ''
         };
+
+        // Add dynamically numbered image columns
+        approvedImages.forEach((imgUrl, i) => {
+            baseRow[`Image ${i + 1}`] = imgUrl;
+        });
+
+        return baseRow;
     };
 
     const rows = productsToExport.flatMap(p => {
@@ -438,6 +443,21 @@ app.get('/api/export-csv', (req, res) => {
         }
 
         return [];
+    });
+
+    // We must ensure that our CSV headers contain enough Image columns for the product with the most images
+    let maxImages = 0;
+    rows.forEach(row => {
+        let count = 0;
+        while (row[`Image ${count + 1}`]) count++;
+        if (count > maxImages) maxImages = count;
+    });
+
+    // Pre-fill empty image columns on all rows so the CSV library outputs consistent headers for all
+    rows.forEach(row => {
+        for (let i = 1; i <= maxImages; i++) {
+            if (!row[`Image ${i}`]) row[`Image ${i}`] = '';
+        }
     });
 
     const csv = stringify(rows, { header: true });

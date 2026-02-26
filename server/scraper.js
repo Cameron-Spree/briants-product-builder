@@ -342,12 +342,12 @@ function extractImages($, baseUrl) {
 
     for (const sel of selectors) {
         $(sel).each((_, img) => {
-            // Try multiple src attributes (WooCommerce often uses data attributes)
+            // Prioritize highest quality data attributes first
             const srcs = [
                 $(img).attr('data-large_image'),
-                $(img).attr('data-src'),
                 $(img).attr('data-zoom-image'),
                 $(img).attr('data-full'),
+                $(img).attr('data-src'),
                 $(img).attr('src')
             ].filter(Boolean);
 
@@ -369,6 +369,11 @@ function extractImages($, baseUrl) {
                     !src.includes('spinner') && !src.includes('logo') &&
                     !src.includes('1x1') && !src.includes('pixel') &&
                     !src.includes('woocommerce-placeholder')) {
+
+                    // If we found a valid URL, try to remove standard WP resize bounds to get the original
+                    // e.g. "-300x300.jpg" -> ".jpg"
+                    src = src.replace(/-\d+x\d+(\.[a-zA-Z]+)$/, '$1');
+
                     images.add(src);
                     break; // Only take the highest quality src per img element
                 }
