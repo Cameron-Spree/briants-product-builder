@@ -13,7 +13,10 @@ import AdmZip from 'adm-zip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '..', 'data');
+
+// On Vercel, use /tmp (ephemeral but writable). Locally, use ./data.
+const IS_VERCEL = !!process.env.VERCEL;
+const DATA_DIR = IS_VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, '..', 'data');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const EXPORTS_DIR = path.join(DATA_DIR, 'exports');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
@@ -512,8 +515,22 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
+<<<<<<< HEAD
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`\n  🚀 Briants Product Builder API running on http://localhost:${PORT}`);
     console.log(`  📦 ${products.length} products loaded\n`);
 });
+=======
+// Export for Vercel serverless function
+export default app;
+
+// Only listen when running locally (not on Vercel)
+if (!IS_VERCEL) {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+        console.log(`\n  🚀 Briants Product Builder API running on http://localhost:${PORT}`);
+        console.log(`  📦 ${products.length} products loaded\n`);
+    });
+}
+>>>>>>> 7f9757b (Fixing http 404 error)
