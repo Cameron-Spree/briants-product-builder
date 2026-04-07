@@ -515,13 +515,6 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
-<<<<<<< HEAD
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`\n  🚀 Briants Product Builder API running on http://localhost:${PORT}`);
-    console.log(`  📦 ${products.length} products loaded\n`);
-});
-=======
 // Export for Vercel serverless function
 export default app;
 
@@ -533,4 +526,3 @@ if (!IS_VERCEL) {
         console.log(`  📦 ${products.length} products loaded\n`);
     });
 }
->>>>>>> 7f9757b (Fixing http 404 error)
