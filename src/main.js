@@ -534,7 +534,11 @@ async function autoFindUrl() {
         const res = await fetch('/api/auto-find-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: p.name })
+            body: JSON.stringify({ 
+                query: p.name, 
+                googleApiKey: (await API.getSettings()).googleApiKey,
+                googleCseId: (await API.getSettings()).googleCseId
+            })
         });
         const data = await res.json();
 
@@ -726,7 +730,7 @@ async function aiGenerateContent() {
         p.notes = document.getElementById('product-notes').value;
         await API.updateProduct(p.sku, p);
 
-        const result = await API.generateWithAI(p.sku, fields);
+        const result = await API.generateWithAI(p, fields);
 
         // Apply results to product
         if (result.shortDescription && !p.shortDescription) {
@@ -1072,8 +1076,7 @@ function setupExportView() {
     document.getElementById('export-csv-btn').addEventListener('click', async () => {
         const domain = document.getElementById('export-domain').value.trim() || 'briantsofrisborough.co.uk';
         try {
-            const res = await fetch(API.getExportUrl(domain));
-            const blob = await res.blob();
+            const blob = await API.exportCSVFile(domain);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -1089,25 +1092,11 @@ function setupExportView() {
     });
 
     document.getElementById('export-all-btn').addEventListener('click', async () => {
-        const domain = document.getElementById('export-domain').value.trim() || 'briantsofrisborough.co.uk';
-        try {
-            const res = await fetch(`${API.getExportUrl(domain)}&all=true`);
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `briants-products-all-${Date.now()}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            toast('Full export downloaded (all products included)', 'info');
-        } catch (e) {
-            toast('Export failed: ' + e.message, 'error');
-        }
+        toast('Exporting all is deprecated in stateless mode, using standard export', 'info');
+        document.getElementById('export-csv-btn').click();
     });
 
-    document.getElementById('export-images-btn').addEventListener('click', () => {
+    document.getElementById('export-images-btn').addEventListener('click', async () => {
         const approvedCount = state.products.reduce((count, p) => {
             return count + (p.images ? p.images.filter(img => img.approved && img.filename).length : 0);
         }, 0);
@@ -1117,8 +1106,21 @@ function setupExportView() {
             return;
         }
 
-        window.open('/api/export-images', '_blank');
-        toast('Image ZIP downloading...', 'success');
+        try {
+            toast('Generating Image ZIP...', 'info');
+            const blob = await API.exportImagesFile();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `briants-images-${Date.now()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast('Image ZIP downloaded!', 'success');
+        } catch(e) {
+            toast('Image Export failed: ' + e.message, 'error');
+        }
     });
 }
 

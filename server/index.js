@@ -33,33 +33,7 @@ app.use('/data/images', express.static(IMAGES_DIR));
 
 const upload = multer({ dest: path.join(DATA_DIR, 'uploads') });
 
-// ── State ──────────────────────────────────────────────
-let products = loadProducts();
-let geminiApiKey = '';      // Set via /api/settings
-let googleApiKey = '';      // Google Custom Search API key
-let googleCseId = '';       // Google Programmable Search Engine ID
-
-function loadProducts() {
-    try {
-        if (fs.existsSync(PRODUCTS_FILE)) {
-            return JSON.parse(fs.readFileSync(PRODUCTS_FILE, 'utf-8'));
-        }
-    } catch (e) {
-        console.error('Failed to load products:', e.message);
-    }
-    return [];
-}
-
-function saveProducts() {
-    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2));
-}
-
 // ── Routes ─────────────────────────────────────────────
-
-// Get all products
-app.get('/api/products', (req, res) => {
-    res.json(products);
-});
 
 // Get categories
 app.get('/api/categories', (req, res) => {
@@ -101,21 +75,10 @@ app.post('/api/upload-csv', upload.single('file'), (req, res) => {
             };
         }).filter(p => p.sku && p.name);
 
-        // Merge: don't overwrite existing products with same SKU
-        const existingSkus = new Set(products.map(p => p.sku));
-        let addedCount = 0;
-        for (const p of newProducts) {
-            if (!existingSkus.has(p.sku)) {
-                products.push(p);
-                addedCount++;
-            }
-        }
-
-        saveProducts();
+        // Just return the parsed products to the client to manage state
         res.json({
-            message: `Added ${addedCount} new products (${newProducts.length - addedCount} duplicates skipped)`,
-            total: products.length,
-            added: addedCount
+            message: `Parsed ${newProducts.length} products from CSV`,
+            products: newProducts
         });
     } catch (e) {
         console.error('CSV parse error:', e);
@@ -124,39 +87,6 @@ app.post('/api/upload-csv', upload.single('file'), (req, res) => {
         // Clean up uploaded file
         if (req.file) fs.unlinkSync(req.file.path);
     }
-});
-
-// Update a product
-app.post('/api/products/:sku', (req, res) => {
-    const sku = req.params.sku;
-    const data = req.body;
-
-    // If the frontend sent up a request to create a new parent...
-    if (data.newParentDef) {
-        const parent = {
-            sku: data.newParentDef.sku,
-            name: data.newParentDef.name,
-            type: 'variable',
-            globalAttributeName: data.newParentDef.globalAttributeName,
-            status: 'complete',
-            categories: [...(data.categories || [])] // Inherit categories
-        };
-        // Add if not already tracking
-        if (!products.some(x => x.sku === parent.sku)) {
-            products.push(parent);
-        }
-
-        // Ensure child connects to it directly
-        data.parentSku = parent.sku;
-        delete data.newParentDef;
-    }
-
-    const idx = products.findIndex(p => p.sku === sku);
-    if (idx === -1) return res.status(404).json({ error: 'Product not found' });
-
-    products[idx] = { ...products[idx], ...data };
-    saveProducts();
-    res.json(products[idx]);
 });
 
 // Scrape a product URL
@@ -175,7 +105,7 @@ app.post('/api/scrape', async (req, res) => {
 
 // Auto-find a product URL
 app.post('/api/auto-find-url', async (req, res) => {
-    const { query } = req.body;
+    const { query, googleApiKey, googleCseId } = req.body;
     if (!query) return res.status(400).json({ error: 'Query is required' });
 
     try {
@@ -198,42 +128,16 @@ app.post('/api/suggest-categories', (req, res) => {
     res.json(suggestions);
 });
 
-// Set/get API settings
-app.post('/api/settings', (req, res) => {
-    if (req.body.geminiApiKey !== undefined) {
-        geminiApiKey = req.body.geminiApiKey;
-    }
-    if (req.body.googleApiKey !== undefined) {
-        googleApiKey = req.body.googleApiKey;
-    }
-    if (req.body.googleCseId !== undefined) {
-        googleCseId = req.body.googleCseId;
-    }
-    res.json({
-        geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '',
-        googleApiKey: googleApiKey ? '****' + googleApiKey.slice(-4) : '',
-        googleCseId: googleCseId || ''
-    });
-});
 
-app.get('/api/settings', (req, res) => {
-    res.json({
-        geminiApiKey: geminiApiKey ? '****' + geminiApiKey.slice(-4) : '',
-        googleApiKey: googleApiKey ? '****' + googleApiKey.slice(-4) : '',
-        googleCseId: googleCseId || ''
-    });
-});
 
 // Generate content with Gemini AI
 app.post('/api/generate', async (req, res) => {
-    const { sku, fields } = req.body;
+    const { product, fields, geminiApiKey } = req.body;
+    
     if (!geminiApiKey) {
-        return res.status(400).json({ error: 'No Gemini API key set. Go to Settings to add it.' });
+        return res.status(400).json({ error: 'No Gemini API key provided.' });
     }
-    if (!sku) return res.status(400).json({ error: 'SKU is required' });
-
-    const product = products.find(p => p.sku === sku);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (!product || !product.sku) return res.status(400).json({ error: 'Product with SKU is required' });
 
     const fieldsToGenerate = fields || ['shortDescription', 'description', 'features', 'categories'];
 
@@ -297,28 +201,39 @@ app.post('/api/download-image', async (req, res) => {
     }
 });
 
-// Export ZIP of all approved images
-app.get('/api/export-images', (req, res) => {
+// Export ZIP of all approved images (fetches them directly to zip in memory)
+app.post('/api/export-images', async (req, res) => {
+    const { images } = req.body; // Array of {url, filename, sku}
+    if (!images || !Array.isArray(images) || images.length === 0) {
+        return res.status(400).send('No images provided for export.');
+    }
+
     try {
         const zip = new AdmZip();
         let addedCount = 0;
+        const fetch = (await import('node-fetch')).default;
 
-        // Add all approved images from all products
-        products.forEach(p => {
-            if (p.images && p.images.length > 0) {
-                p.images.filter(img => img.approved && img.filename).forEach(img => {
-                    const skuDir = path.join(IMAGES_DIR, p.sku);
-                    const imagePath = path.join(skuDir, img.filename);
-                    if (fs.existsSync(imagePath)) {
-                        zip.addLocalFile(imagePath);
-                        addedCount++;
-                    }
+        // Fetch each image and add it directly to the ZIP buffer
+        // Note: Done sequentially to avoid overwhelming memory on Vercel instance
+        for (const img of images) {
+            try {
+                const response = await fetch(img.url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    timeout: 5000
                 });
+                if (response.ok) {
+                    const buffer = Buffer.from(await response.arrayBuffer());
+                    // Organize inside SKU folders within the ZIP
+                    zip.addFile(`${img.sku}/${img.filename}`, buffer);
+                    addedCount++;
+                }
+            } catch (err) {
+                console.error(`Failed to fetch image for ZIP: ${img.url}`, err);
             }
-        });
+        }
 
         if (addedCount === 0) {
-            return res.status(404).send('No approved images found to export.');
+            return res.status(404).send('Failed to fetch any images for export.');
         }
 
         const zipName = `briants-images-${Date.now()}.zip`;
@@ -336,10 +251,9 @@ app.get('/api/export-images', (req, res) => {
 });
 
 // Export WooCommerce CSV
-app.get('/api/export-csv', (req, res) => {
-    const domain = req.query.domain || 'briantsofrisborough.co.uk';
-    const all = req.query.all === 'true';
-    const productsToExport = all ? products : products.filter(p => p.status === 'complete');
+app.post('/api/export-csv', (req, res) => {
+    const domain = req.body.domain || 'briantsofrisborough.co.uk';
+    const productsToExport = req.body.products || [];
 
     // Prepare a map of all parents and their children
     const parentChildrenMap = {};
@@ -481,38 +395,10 @@ app.get('/api/export-csv', (req, res) => {
 
     const csv = stringify(rows, { header: true });
     const filename = `briants-products-${Date.now()}.csv`;
-    const filePath = path.join(EXPORTS_DIR, filename);
-    fs.writeFileSync(filePath, csv);
-
+    // Return CSV buffer directly
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
-});
-
-// Delete a product
-app.delete('/api/products/:sku', (req, res) => {
-    const idx = products.findIndex(p => p.sku === req.params.sku);
-    if (idx === -1) return res.status(404).json({ error: 'Product not found' });
-    products.splice(idx, 1);
-    saveProducts();
-    res.json({ message: 'Deleted' });
-});
-
-// Reset all products
-app.post('/api/reset', (req, res) => {
-    products = [];
-    saveProducts();
-    res.json({ message: 'All products cleared' });
-});
-
-// Stats
-app.get('/api/stats', (req, res) => {
-    res.json({
-        total: products.length,
-        pending: products.filter(p => p.status === 'pending').length,
-        confirmed: products.filter(p => p.status === 'confirmed').length,
-        complete: products.filter(p => p.status === 'complete').length
-    });
 });
 
 // Export for Vercel serverless function
@@ -523,6 +409,6 @@ if (!IS_VERCEL) {
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
         console.log(`\n  🚀 Briants Product Builder API running on http://localhost:${PORT}`);
-        console.log(`  📦 ${products.length} products loaded\n`);
+        console.log(`  ⚡ Stateless Mode Active\n`);
     });
 }
