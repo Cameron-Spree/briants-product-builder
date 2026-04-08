@@ -1291,20 +1291,20 @@ function setupTheme() {
     const isLight = savedTheme === 'light' || (!savedTheme && systemLight);
 
     if (isLight) {
-        document.body.setAttribute('data-theme', 'light');
+        document.documentElement.setAttribute('data-theme', 'light');
         btn.textContent = '🌙';
     }
 
     btn.addEventListener('click', () => {
-        const isCurrentlyLight = document.body.getAttribute('data-theme') === 'light';
+        const isCurrentlyLight = document.documentElement.getAttribute('data-theme') === 'light';
 
         if (isCurrentlyLight) {
-            document.body.removeAttribute('data-theme');
+            document.documentElement.removeAttribute('data-theme');
             localStorage.setItem('theme', 'dark');
             btn.textContent = '☀️';
             toast('Dark Mode enabled', 'info');
         } else {
-            document.body.setAttribute('data-theme', 'light');
+            document.documentElement.setAttribute('data-theme', 'light');
             localStorage.setItem('theme', 'light');
             btn.textContent = '🌙';
             toast('Light Mode enabled', 'info');
