@@ -279,6 +279,9 @@ function setupWorkspaceView() {
     // Save
     document.getElementById('save-product-btn').addEventListener('click', saveCurrentProduct);
 
+    // Delete
+    document.getElementById('delete-product-btn').addEventListener('click', deleteCurrentProduct);
+
     // AI Generate
     document.getElementById('ai-generate-btn').addEventListener('click', aiGenerateContent);
 
@@ -807,13 +810,13 @@ async function saveCurrentProduct() {
     }
 }
 
-async function clearWorkspace() {
+function clearWorkspace() {
     if (!confirm('Are you sure you want to clear the workspace? All uploaded data and progress will be lost. This cannot be undone.')) {
         return;
     }
 
     try {
-        await API.resetAll();
+        API.resetAll();
         state.products = [];
         state.currentSku = null;
 
@@ -827,6 +830,30 @@ async function clearWorkspace() {
         showView('upload');
     } catch (e) {
         toast('Failed to clear workspace: ' + e.message, 'error');
+    }
+}
+
+async function deleteCurrentProduct() {
+    const p = getProduct(state.currentSku);
+    if (!p) return;
+
+    if (!confirm(`Are you sure you want to delete "${p.name}"?`)) {
+        return;
+    }
+
+    try {
+        await API.deleteProduct(p.sku);
+        state.products = await API.getProducts();
+        state.currentSku = null;
+
+        hide('editor-panel');
+        show('no-product-selected');
+
+        renderQueue();
+        updateStats();
+        toast('Product deleted', 'success');
+    } catch (e) {
+        toast('Delete failed: ' + e.message, 'error');
     }
 }
 
