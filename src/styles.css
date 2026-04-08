@@ -19,6 +19,8 @@
   --bg-surface: #161625;
   --bg-elevated: #1c1c30;
   --bg-hover: #23233a;
+  --bg-glass: rgba(22, 22, 37, 0.7);
+  --bg-header: rgba(15, 15, 24, 0.9);
 
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-medium: rgba(255, 255, 255, 0.1);
@@ -71,6 +73,8 @@
   --bg-surface: #f9fafb;
   --bg-elevated: #ffffff;
   --bg-hover: #e5e7eb;
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --bg-header: rgba(255, 255, 255, 0.9);
 
   --border-subtle: rgba(0, 0, 0, 0.06);
   --border-medium: rgba(0, 0, 0, 0.1);
@@ -112,7 +116,7 @@ body {
 
 /* ─── Glass Panel ───────────────────────────── */
 .glass-panel {
-  background: rgba(22, 22, 37, 0.7);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-subtle);
@@ -126,7 +130,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: rgba(15, 15, 24, 0.9);
+  background: var(--bg-header);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
